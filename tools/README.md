@@ -8,9 +8,20 @@
 
 ### Analyze
 - `analyze/extract-themes` - Extract key themes using AI
+  - `--format [text|json|markdown]` - Output format
+  - `--days N` - Time range filter
+  - `--type TYPE` - Event type filter
 - `analyze/find-connections` - Find conceptual connections
+  - `--format [text|json|markdown]` - Output format
+  - `--days N` - Time range filter
+  - `--topic TOPIC` - Topic filter
 
-## Utility Tools
+### Process
+- `process/rotate-logs` - Rotate and archive event logs
+  - `--max-size BYTES` - Size threshold
+  - `--max-age HOURS` - Age threshold
+  - `--max-events COUNT` - Event count threshold
+  - `--force` - Force rotation
 
 ### Utils
 - `utils/validate-jsonl` - Validate JSONL file format integrity

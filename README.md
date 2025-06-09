@@ -20,6 +20,15 @@ source ~/.zshrc  # or ~/.bashrc / ~/.bash_profile
 source setup.sh
 ```
 
+### Dependencies
+
+- `jq` - JSON processing (required)
+- `claude` - Claude CLI (required) 
+- `flock` - File locking for log rotation (optional but recommended)
+- Standard Unix tools: `bash`, `grep`, `find`, `date`
+
+Note: The system supports both macOS and Linux date/stat command variants.
+
 ## Configuration
 
 ```bash
@@ -62,12 +71,39 @@ tools/                  # Processing utilities
 ## Tools
 
 ### Capture
-- `tools/capture/events` - Log knowledge events
-- `tools/capture/query` - Search events and knowledge
+- `tools/capture/events` - Log knowledge events (JSONL format)
+- `tools/capture/query` - Search events across hot log and archives
 
 ### Analysis  
 - `tools/analyze/extract-themes` - Find recurring themes
+  - Supports `--format [text|json|markdown]` output
+  - Use `--days N` to limit time range
+  - Use `--type TYPE` to filter by event type
 - `tools/analyze/find-connections` - Identify concept relationships
+  - Supports `--format [text|json|markdown]` output
+  - Use `--days N` to limit time range
+  - Use `--topic TOPIC` to filter by topic
+
+### Process
+- `tools/process/rotate-logs` - Archive old events
+  - `--max-size BYTES` - Rotate when size exceeded
+  - `--max-age HOURS` - Rotate when age exceeded
+  - `--max-events COUNT` - Rotate when count exceeded
+  - `--force` - Force immediate rotation
+
+### Utilities
+- `tools/utils/validate-jsonl` - Validate JSONL file format
+- `tools/utils/migrate-to-jsonl.py` - Convert multi-line JSON to JSONL
+
+## Event Format
+
+Events are stored in JSONL (JSON Lines) format - one JSON object per line:
+
+```json
+{"ts":"2025-06-09T16:06:01Z","type":"thought","topic":"memory","content":"Human memory is associative...","metadata":{}}
+```
+
+Event types: `thought`, `connection`, `question`, `insight`, `process`
 
 ## Architecture Benefits
 
