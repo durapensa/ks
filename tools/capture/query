@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+# kq (knowledge-query) - Search across events and knowledge
+# Usage: kq <search_term> [--type <type>] [--topic <topic>] [--since <date>]
+
+set -euo pipefail
+
+# Source configuration
+source "$(dirname "$0")/../../.ks-env"
+
+# All paths come from .ks-env
+
+# Parse arguments
+SEARCH_TERM=""
+TYPE_FILTER=""
+TOPIC_FILTER=""
+SINCE_FILTER=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --type)
+            TYPE_FILTER="$2"
+            shift 2
+            ;;
+        --topic)
+            TOPIC_FILTER="$2"
+            shift 2
+            ;;
+        --since)
+            SINCE_FILTER="$2"
+            shift 2
+            ;;
+        *)
+            if [ -z "$SEARCH_TERM" ]; then
+                SEARCH_TERM="$1"
+            else
+                echo "Unknown option: $1" >&2
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$SEARCH_TERM" ]; then
+    echo "Usage: kq <search_term> [--type <type>] [--topic <topic>] [--since <date>]" >&2
+    exit 1
+fi
+
+# Build jq filter
+JQ_FILTER="."
+
+if [ -n "$TYPE_FILTER" ]; then
+    JQ_FILTER="$JQ_FILTER | select(.type == \"$TYPE_FILTER\")"
+fi
+
+if [ -n "$TOPIC_FILTER" ]; then
+    JQ_FILTER="$JQ_FILTER | select(.topic == \"$TOPIC_FILTER\")"
+fi
+
+if [ -n "$SINCE_FILTER" ]; then
+    JQ_FILTER="$JQ_FILTER | select(.ts >= \"$SINCE_FILTER\")"
+fi
+
+# Search function
+search_file() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        jq -r "$JQ_FILTER | select(.content | test(\"$SEARCH_TERM\"; \"i\")) | \"\(.ts) [\(.type)/\(.topic)] \(.content)\"" "$file" 2>/dev/null || true
+    fi
+}
+
+# Search hot log first
+search_file "$KS_HOT_LOG"
+
+# Search archive files (if they exist)
+if [ -d "$KS_ARCHIVE_DIR" ]; then
+    find "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f | sort -r | while read -r file; do
+        search_file "$file"
+    done
+fi

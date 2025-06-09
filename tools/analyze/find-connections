@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+# find-connections - Find conceptual connections between knowledge events
+# Usage: find-connections [--topic TOPIC]
+
+set -euo pipefail
+
+# Source configuration
+source "$(dirname "$0")/../../.ks-env"
+
+# Default values
+TOPIC_FILTER=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --topic)
+            TOPIC_FILTER="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Build filter
+FILTER="."
+if [ -n "$TOPIC_FILTER" ]; then
+    FILTER="$FILTER | select(.topic == \"$TOPIC_FILTER\")"
+fi
+
+# Extract events and analyze connections
+cat "$KS_HOT_LOG" 2>/dev/null | \
+    jq -r "$FILTER | \"\(.topic): \(.content)\"" | \
+    claude --model "$KS_MODEL" --print --output-format json "Find conceptual connections between these events. Return JSON: {connections: [{concepts: [string], relationship: string, strength: number, evidence: string}]}"

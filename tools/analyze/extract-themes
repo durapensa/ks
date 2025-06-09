@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+# extract-themes - Extract key themes from knowledge events
+# Usage: extract-themes [--days N] [--type TYPE]
+
+set -euo pipefail
+
+# Source configuration
+source "$(dirname "$0")/../../.ks-env"
+
+# Default values
+DAYS="${1:-7}"
+TYPE_FILTER=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --days)
+            DAYS="$2"
+            shift 2
+            ;;
+        --type)
+            TYPE_FILTER="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Build filter
+FILTER="."
+if [ -n "$TYPE_FILTER" ]; then
+    FILTER="$FILTER | select(.type == \"$TYPE_FILTER\")"
+fi
+
+# Extract content and analyze
+cat "$KS_HOT_LOG" 2>/dev/null | \
+    jq -r "$FILTER | .content" | \
+    claude --model "$KS_MODEL" --print --output-format json "Extract 3-5 key themes from these thoughts. Return JSON: {themes: [{name: string, description: string, frequency: number, supporting_quotes: [string]}]}"

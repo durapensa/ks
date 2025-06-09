@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+
+# ke (knowledge-event) - Append events to knowledge stream
+# Usage: ke <type> <topic> <content>
+#        echo "content" | ke <type> <topic>
+
+set -euo pipefail
+
+# Source configuration
+source "$(dirname "$0")/../../.ks-env"
+
+# HOT_LOG path comes from .ks-env
+# Directory creation handled by ks_ensure_dirs in .ks-env
+
+# Parse arguments
+if [ $# -lt 2 ]; then
+    echo "Usage: ke <type> <topic> [content]" >&2
+    echo "       echo 'content' | ke <type> <topic>" >&2
+    echo "" >&2
+    echo "Event types: thought, connection, question, insight, process" >&2
+    exit 1
+fi
+
+TYPE="$1"
+TOPIC="$2"
+CONTENT=""
+
+# Validate event type
+ks_validate_event_type "$TYPE" || exit 1
+
+# Get content from argument or stdin
+if [ $# -ge 3 ]; then
+    CONTENT="$3"
+else
+    CONTENT=$(cat)
+fi
+
+# Generate timestamp
+TIMESTAMP=$(ks_timestamp)
+
+# Create JSON event
+jq -n \
+    --arg ts "$TIMESTAMP" \
+    --arg type "$TYPE" \
+    --arg topic "$TOPIC" \
+    --arg content "$CONTENT" \
+    '{ts: $ts, type: $type, topic: $topic, content: $content, metadata: {}}' \
+    >> "$KS_HOT_LOG"
+
+echo "Event logged: $TYPE/$TOPIC"

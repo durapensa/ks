@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Knowledge System Environment Configuration
+# Source this file in all tools: source "$(dirname "$0")/../../.ks-env"
+
+# Base directories
+export KS_ROOT="${KS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+export KS_KNOWLEDGE_DIR="${KS_KNOWLEDGE_DIR:-$KS_ROOT/knowledge}"
+export KS_TOOLS_DIR="$KS_ROOT/tools"
+export KS_EVENTS_DIR="$KS_KNOWLEDGE_DIR/events"
+export KS_DERIVED_DIR="$KS_KNOWLEDGE_DIR/derived"
+
+# File paths
+export KS_HOT_LOG="$KS_EVENTS_DIR/hot.jsonl"
+export KS_ARCHIVE_DIR="$KS_EVENTS_DIR/archive"
+export KS_NOTIFICATIONS_DIR="$KS_KNOWLEDGE_DIR/.notifications"
+
+# Claude model for analysis tools
+export KS_MODEL="${KS_MODEL:-sonnet}"
+
+# Common functions
+ks_ensure_dirs() {
+    # Ensure all required directories exist
+    mkdir -p "$KS_EVENTS_DIR" "$KS_ARCHIVE_DIR" "$KS_DERIVED_DIR" "$KS_NOTIFICATIONS_DIR"
+}
+
+ks_timestamp() {
+    # Generate UTC timestamp in ISO format
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
+}
+
+ks_validate_event_type() {
+    local type="$1"
+    case "$type" in
+        thought|connection|question|insight|process)
+            return 0
+            ;;
+        *)
+            echo "Error: Invalid event type '$type'" >&2
+            echo "Valid types: thought, connection, question, insight, process" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Initialize on source
+ks_ensure_dirs
