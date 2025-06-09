@@ -124,15 +124,17 @@ esac
 
 ## Current Technical Debt
 
-### High Priority (Performance)
-- **Performance Optimization Pending** (Issue #14): Bash/jq processing shows strain at scale; Go rewrite planned when needed
-- **No Analysis Caching**: Background results not cached, repeated API costs
-- **Limited Concurrency**: Strict serialization prevents parallel processing
+### Cost Optimization
+- **No Analysis Caching**: Background results not cached, repeated API costs for similar queries
 
-### Medium Priority (Monitoring)
+### System Monitoring
 - **No Health Checks**: Background system lacks automated monitoring
 - **Missing Metrics**: No observability into analysis success rates
 - **Process Cleanup**: Manual cleanup of old process records
+
+### Deferred Optimizations (Issue #14)
+- **Performance**: Bash/jq processing sufficient for current scale; Go rewrite planned if bottlenecks emerge
+- **Concurrency**: Single-process model works well for personal knowledge system scale
 
 ## Development Workflow
 
@@ -152,7 +154,7 @@ esac
 
 - **Issue #5**: Notification system - ✅ COMPLETED and closed
 - **Issue #3**: Background scheduler - 🟡 FUNCTIONAL with comprehensive analysis, needs automation only
-- **Issue #14**: Performance optimization - 🟡 Phase 1 partially complete
+- **Issue #14**: Performance optimization - ⚪ DEFERRED until performance impacts user experience
 - **Issue #15**: Test suite design - 🔴 CRITICAL for ongoing development
 - **Issue #10**: Derived knowledge pipeline - 🟡 Ready for implementation
 
