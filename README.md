@@ -27,7 +27,14 @@ source setup.sh
 - `flock` - File locking for log rotation (optional but recommended)
 - Standard Unix tools: `bash`, `grep`, `find`, `date`
 
-Note: The system supports both macOS and Linux date/stat command variants.
+**Automatic Installation (macOS):**
+- On macOS with Homebrew, `setup.sh` will detect missing dependencies and offer to install them automatically
+- Installs GNU coreutils for cross-platform compatibility (eliminates date/stat command differences)
+- Configures PATH to prefer GNU tools, ensuring consistent behavior across platforms
+
+**Manual Installation:**
+- macOS: `brew install jq coreutils util-linux` (then install Claude CLI separately)
+- Linux: Use your distribution's package manager
 
 ## Configuration
 

@@ -30,6 +30,7 @@ knowledge/      # Personal data (gitignored)
 - **Data Integrity**: The event log is append-only by design. Always create backups before testing log rotation or file manipulation.
 - **Format Validation**: Use `tools/utils/validate-jsonl` to check file integrity.
 - **Migration Tool**: If you encounter multi-line JSON format, use `tools/utils/migrate-to-jsonl.py` to convert to proper JSONL format.
+- **Cross-Platform Compatibility**: On macOS, `setup.sh` automatically configures GNU coreutils for consistent date/stat behavior across platforms.
 
 ## Development Workflow
 
