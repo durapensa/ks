@@ -34,6 +34,11 @@ knowledge/      # Personal data (gitignored)
 
 ## Development Workflow
 
+**When** the user agrees to implement a feature or fix:
+- **Then** IMMEDIATELY document your complete implementation plan in `DEVELOPMENT_STATUS.md`
+- **Then** include specific steps, files to modify, and expected outcomes
+- **Then** this plan serves as both documentation and a roadmap for the work
+
 **When** you successfully complete an issue or make significant improvements:
 - **Then** commit your changes with a descriptive message referencing the issue number
 - **Then** push to the remote repository to share your progress
