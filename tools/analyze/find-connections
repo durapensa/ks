@@ -47,6 +47,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate --days parameter
+ks_validate_days "$DAYS" || exit 1
+
 # Calculate date range
 SINCE_DATE=$(date -u -d "${DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
 
@@ -56,32 +59,15 @@ if [ -n "$TOPIC_FILTER" ]; then
     FILTER="$FILTER | select(.topic == \"$TOPIC_FILTER\")"
 fi
 
-# Collect events from hot log and archives
+# Collect events from hot log and archives using shared function
 EVENTS=""
 
-# Add hot log events
-if [ -f "$KS_HOT_LOG" ] && [ -s "$KS_HOT_LOG" ]; then
-    HOT_EVENTS=$(jq -r "$FILTER | select(.ts >= \"$SINCE_DATE\") | \"\(.topic): \(.content)\"" "$KS_HOT_LOG" 2>/dev/null)
-    if [ -n "$HOT_EVENTS" ]; then
-        EVENTS="$HOT_EVENTS"
-    fi
-fi
+# Use shared file collection function
+ks_collect_files
 
-# Add archive events
-if [ -d "$KS_ARCHIVE_DIR" ]; then
-    for archive in $(find "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f | sort -r); do
-        if [ -f "$archive" ] && [ -s "$archive" ]; then
-            ARCHIVE_EVENTS=$(jq -r "$FILTER | select(.ts >= \"$SINCE_DATE\") | \"\(.topic): \(.content)\"" "$archive" 2>/dev/null)
-            if [ -n "$ARCHIVE_EVENTS" ]; then
-                if [ -n "$EVENTS" ]; then
-                    EVENTS="$EVENTS
-$ARCHIVE_EVENTS"
-                else
-                    EVENTS="$ARCHIVE_EVENTS"
-                fi
-            fi
-        fi
-    done
+# Process all files in single jq call if any files exist
+if [ ${#FILES_TO_PROCESS[@]} -gt 0 ]; then
+    EVENTS=$(cat "${FILES_TO_PROCESS[@]}" | jq -r --arg since_date "$SINCE_DATE" "$FILTER | select(.ts >= \$since_date) | \"\(.topic): \(.content)\"" 2>/dev/null | grep -v '^$' || true)
 fi
 
 if [ -z "$EVENTS" ]; then

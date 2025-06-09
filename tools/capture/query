@@ -62,20 +62,10 @@ if [ -n "$SINCE_FILTER" ]; then
     JQ_FILTER="$JQ_FILTER | select(.ts >= \"$SINCE_FILTER\")"
 fi
 
-# Search function
-search_file() {
-    local file="$1"
-    if [ -f "$file" ]; then
-        jq -r "$JQ_FILTER | select(.content | test(\"$SEARCH_TERM\"; \"i\")) | \"\(.ts) [\(.type)/\(.topic)] \(.content)\"" "$file" 2>/dev/null || true
-    fi
-}
+# Use shared file collection function for consistent processing
+ks_collect_files
 
-# Search hot log first
-search_file "$KS_HOT_LOG"
-
-# Search archive files (if they exist)
-if [ -d "$KS_ARCHIVE_DIR" ]; then
-    find "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f | sort -r | while read -r file; do
-        search_file "$file"
-    done
+# Perform search with single jq call if files exist
+if [ ${#FILES_TO_PROCESS[@]} -gt 0 ]; then
+    cat "${FILES_TO_PROCESS[@]}" | jq -r --arg search_term "$SEARCH_TERM" "$JQ_FILTER | select(.content | test(\$search_term; \"i\")) | \"\(.ts) [\(.type)/\(.topic)] \(.content)\"" 2>/dev/null || true
 fi

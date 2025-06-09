@@ -43,14 +43,24 @@ knowledge/      # Personal data (gitignored)
 - **Then** commit and push your work to prevent data loss
 - **Then** ensure the commit message explains what was changed and why
 
+## Current Development Context
+
+**IMPORTANT**: Check `DEVELOPMENT_STATUS.md` for current priorities, technical debt, and next steps.
+
 ## Active Development
 
-Track development with `gh issue list`. Current priorities:
-- Issue #1: Test harness for automated conversation testing
-- Issue #2: Log rotation tool for archive management
-- Issue #3: Background analysis scheduler
-- Issue #4: Archive search functionality fixes
-- Issue #5: Notification system implementation
-- Issue #6: Output formatting for analysis tools
+Track development with `gh issue list`. Use `gh issue view <number>` for details.
 
-Use `gh issue view <number>` for details.
+## Documentation Hygiene
+
+**Critical**: Keep development context current and avoid redundancy:
+- `DEVELOPMENT_STATUS.md` tracks immediate priorities and technical debt
+- `CLAUDE.md` provides project overview and workflow guidance  
+- Git history tracks what was completed (no need to duplicate in docs)
+- GitHub issues track specific feature requests and bugs
+
+Update `DEVELOPMENT_STATUS.md` after significant changes to maintain session continuity.
+
+## Communication Style
+
+**NEVER use emojis or pictographic symbols** in any documentation, code comments, or GitHub issues. Use clear, professional text-only communication.

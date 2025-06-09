@@ -60,5 +60,55 @@ ks_claude() {
     fi
 }
 
+ks_collect_files() {
+    # Collect JSONL files in chronological order (hot log first, then archives)
+    # Usage: ks_collect_files
+    # Outputs: Array of file paths via global FILES_TO_PROCESS variable
+    
+    FILES_TO_PROCESS=()
+    
+    # Add hot log if it exists and has content
+    if [ -f "$KS_HOT_LOG" ] && [ -s "$KS_HOT_LOG" ]; then
+        FILES_TO_PROCESS+=("$KS_HOT_LOG")
+    fi
+    
+    # Add archive files in reverse chronological order
+    if [ -d "$KS_ARCHIVE_DIR" ]; then
+        while IFS= read -r -d '' file; do
+            if [ -f "$file" ] && [ -s "$file" ]; then
+                FILES_TO_PROCESS+=("$file")
+            fi
+        done < <(find "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f -print0 | sort -zr)
+    fi
+}
+
+ks_validate_days() {
+    # Validate --days parameter is a positive integer
+    # Usage: ks_validate_days "$DAYS"
+    local days="$1"
+    
+    if ! [[ "$days" =~ ^[0-9]+$ ]] || [ "$days" -le 0 ]; then
+        echo "Error: --days must be a positive integer, got: '$days'" >&2
+        return 1
+    fi
+    
+    # Reasonable upper limit to prevent accidents
+    if [ "$days" -gt 3650 ]; then
+        echo "Warning: --days value '$days' is unusually large (>10 years)" >&2
+    fi
+    
+    return 0
+}
+
+ks_sanitize_string() {
+    # Basic sanitization for user input to prevent command injection
+    # Usage: CLEAN_VAR=$(ks_sanitize_string "$USER_INPUT")
+    local input="$1"
+    
+    # Remove or escape potentially dangerous characters
+    # Allow alphanumeric, spaces, hyphens, underscores, periods, colons
+    echo "$input" | sed 's/[^a-zA-Z0-9 \-_.:\/]//g'
+}
+
 # Initialize on source
 ks_ensure_dirs

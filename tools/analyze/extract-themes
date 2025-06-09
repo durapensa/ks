@@ -53,35 +53,21 @@ if [ -n "$TYPE_FILTER" ]; then
     FILTER="$FILTER | select(.type == \"$TYPE_FILTER\")"
 fi
 
+# Validate --days parameter
+ks_validate_days "$DAYS" || exit 1
+
 # Calculate date range
 SINCE_DATE=$(date -u -d "${DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
 
-# Collect events from hot log and archives
+# Collect events from hot log and archives using shared function
 CONTENT=""
 
-# Add hot log events
-if [ -f "$KS_HOT_LOG" ] && [ -s "$KS_HOT_LOG" ]; then
-    HOT_CONTENT=$(jq -r "$FILTER | select(.ts >= \"$SINCE_DATE\") | .content" "$KS_HOT_LOG" 2>/dev/null)
-    if [ -n "$HOT_CONTENT" ]; then
-        CONTENT="$HOT_CONTENT"
-    fi
-fi
+# Use shared file collection function
+ks_collect_files
 
-# Add archive events
-if [ -d "$KS_ARCHIVE_DIR" ]; then
-    for archive in $(find "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f | sort -r); do
-        if [ -f "$archive" ] && [ -s "$archive" ]; then
-            ARCHIVE_CONTENT=$(jq -r "$FILTER | select(.ts >= \"$SINCE_DATE\") | .content" "$archive" 2>/dev/null)
-            if [ -n "$ARCHIVE_CONTENT" ]; then
-                if [ -n "$CONTENT" ]; then
-                    CONTENT="$CONTENT
-$ARCHIVE_CONTENT"
-                else
-                    CONTENT="$ARCHIVE_CONTENT"
-                fi
-            fi
-        fi
-    done
+# Process all files in single jq call if any files exist
+if [ ${#FILES_TO_PROCESS[@]} -gt 0 ]; then
+    CONTENT=$(cat "${FILES_TO_PROCESS[@]}" | jq -r --arg since_date "$SINCE_DATE" "$FILTER | select(.ts >= \$since_date) | .content" 2>/dev/null | grep -v '^$' || true)
 fi
 
 if [ -z "$CONTENT" ]; then

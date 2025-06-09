@@ -94,6 +94,7 @@ should_rotate() {
     # Check age of oldest event
     local first_timestamp=$(head -1 "$KS_HOT_LOG" | jq -r '.ts' 2>/dev/null || echo "")
     if [ -n "$first_timestamp" ]; then
+        # setup.sh ensures GNU date is available as 'date' on all platforms
         local first_epoch=$(date -d "$first_timestamp" +%s 2>/dev/null || echo 0)
         local current_epoch=$(date +%s)
         local age_hours=$(( (current_epoch - first_epoch) / 3600 ))
