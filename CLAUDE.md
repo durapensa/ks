@@ -28,3 +28,15 @@ knowledge/      # Personal data (gitignored)
 
 - **Testing Commands**: Be extremely careful when running bash commands that modify the knowledge base (especially the hot.jsonl file). Always create backups before testing log rotation or file manipulation. The event log is append-only by design - corrupting it breaks the entire system.
 - **Archive Testing**: When testing archive functionality, use proper JSONL format - each line must be a complete JSON object. Simple head/tail commands can break JSON structure.
+
+## Active Development
+
+Track development with `gh issue list`. Current priorities:
+- Issue #1: Test harness for automated conversation testing
+- Issue #2: Log rotation tool for archive management
+- Issue #3: Background analysis scheduler
+- Issue #4: Archive search functionality fixes
+- Issue #5: Notification system implementation
+- Issue #6: Output formatting for analysis tools
+
+Use `gh issue view <number>` for details.
