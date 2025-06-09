@@ -43,6 +43,11 @@ knowledge/      # Personal data (gitignored)
 - **Then** commit and push your work to prevent data loss
 - **Then** ensure the commit message explains what was changed and why
 
+**When** ending any development session:
+- **Then** ALWAYS stage, commit, and push all tested changes before session termination
+- **Then** verify clean working directory with `git status` to prevent work loss
+- **Then** update `DEVELOPMENT_STATUS.md` if significant progress was made
+
 ## Current Development Context
 
 **IMPORTANT**: Check `DEVELOPMENT_STATUS.md` for current priorities, technical debt, and next steps.
