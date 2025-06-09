@@ -31,6 +31,17 @@ knowledge/      # Personal data (gitignored)
 - **Format Validation**: Use `tools/utils/validate-jsonl` to check file integrity.
 - **Migration Tool**: If you encounter multi-line JSON format, use `tools/utils/migrate-to-jsonl.py` to convert to proper JSONL format.
 
+## Development Workflow
+
+**When** you successfully complete an issue or make significant improvements:
+- **Then** commit your changes with a descriptive message referencing the issue number
+- **Then** push to the remote repository to share your progress
+- **Then** close the issue with `gh issue close <number>` after documenting the resolution
+
+**When** you finish a work session with tested changes:
+- **Then** commit and push your work to prevent data loss
+- **Then** ensure the commit message explains what was changed and why
+
 ## Active Development
 
 Track development with `gh issue list`. Current priorities:
