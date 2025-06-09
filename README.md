@@ -12,9 +12,12 @@ An event-sourced knowledge system for capturing thoughts, connections, and insig
 ## Setup
 
 ```bash
-# Run setup (adds 'ks' command and configures environment)
+# Option 1: Update shell config only
 ./setup.sh
 source ~/.zshrc  # or ~/.bashrc / ~/.bash_profile
+
+# Option 2: Update shell config AND activate immediately
+source setup.sh
 ```
 
 ## Configuration
