@@ -54,7 +54,7 @@ if [ -n "$TYPE_FILTER" ]; then
 fi
 
 # Calculate date range
-SINCE_DATE=$(date -u -v-${DAYS}d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "${DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
+SINCE_DATE=$(date -u -d "${DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
 
 # Collect events from hot log and archives
 CONTENT=""

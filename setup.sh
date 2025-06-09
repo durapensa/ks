@@ -25,6 +25,7 @@ check_dependencies() {
     # Check for required dependencies
     command -v jq >/dev/null 2>&1 || missing_deps+=("jq")
     command -v claude >/dev/null 2>&1 || missing_deps+=("claude")
+    command -v python3 >/dev/null 2>&1 || missing_deps+=("python3")
     
     # Check for optional but recommended dependencies
     command -v flock >/dev/null 2>&1 || missing_deps+=("util-linux")
@@ -57,6 +58,9 @@ check_dependencies() {
                             "claude")
                                 echo "Note: Please install Claude CLI manually from https://claude.ai/cli"
                                 ;;
+                            "python3")
+                                echo "Note: python3 should be available by default. If missing, install via Xcode Command Line Tools: xcode-select --install"
+                                ;;
                             "util-linux")
                                 brew install util-linux
                                 ;;
@@ -74,10 +78,15 @@ check_dependencies() {
                 echo ""
                 echo "Consider installing Homebrew (https://brew.sh) for easier dependency management"
                 echo "Then run: brew install ${missing_deps[*]// claude/}"
-                echo "Note: Install Claude CLI separately from https://claude.ai/cli"
+                echo "Notes:"
+                echo "  - Install Claude CLI separately from https://claude.ai/cli"
+                echo "  - python3 should be available by default via Xcode Command Line Tools"
             fi
         else
             echo "Please install missing dependencies using your system package manager"
+            echo "Notes:"
+            echo "  - Install Claude CLI separately from https://claude.ai/cli"
+            echo "  - python3 should be available by default on most modern systems"
         fi
         echo ""
     fi

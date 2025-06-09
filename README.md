@@ -24,6 +24,7 @@ source setup.sh
 
 - `jq` - JSON processing (required)
 - `claude` - Claude CLI (required) 
+- `python3` - For JSONL migration utilities (typically pre-installed)
 - `flock` - File locking for log rotation (optional but recommended)
 - Standard Unix tools: `bash`, `grep`, `find`, `date`
 

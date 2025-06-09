@@ -78,7 +78,7 @@ should_rotate() {
     fi
     
     # Check file size
-    local file_size=$(stat -f%z "$KS_HOT_LOG" 2>/dev/null || stat -c%s "$KS_HOT_LOG" 2>/dev/null || echo 0)
+    local file_size=$(stat -c%s "$KS_HOT_LOG" 2>/dev/null || echo 0)
     if [ "$file_size" -gt "$MAX_SIZE" ]; then
         echo "File size ($file_size bytes) exceeds limit ($MAX_SIZE bytes)"
         return 0
@@ -94,7 +94,7 @@ should_rotate() {
     # Check age of oldest event
     local first_timestamp=$(head -1 "$KS_HOT_LOG" | jq -r '.ts' 2>/dev/null || echo "")
     if [ -n "$first_timestamp" ]; then
-        local first_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$first_timestamp" +%s 2>/dev/null || date -d "$first_timestamp" +%s 2>/dev/null || echo 0)
+        local first_epoch=$(date -d "$first_timestamp" +%s 2>/dev/null || echo 0)
         local current_epoch=$(date +%s)
         local age_hours=$(( (current_epoch - first_epoch) / 3600 ))
         
