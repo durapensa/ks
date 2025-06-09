@@ -69,3 +69,19 @@ Update `DEVELOPMENT_STATUS.md` after significant changes to maintain session con
 ## Communication Style
 
 **NEVER use emojis or pictographic symbols** in any documentation, code comments, or GitHub issues. Use clear, professional text-only communication.
+
+## Development Language Guidelines
+
+**Research Software Context**: This is ongoing research software that will evolve continuously. NEVER describe implementations as:
+- "production-ready" 
+- "complete"
+- "finished"
+- "fully implemented"
+
+**Instead use language that reflects iterative development**:
+- "functional and tested"
+- "implemented with room for enhancement"
+- "working implementation, ready for further development"
+- "foundational version complete"
+
+This software will be developed and refined indefinitely as part of ongoing research.

@@ -1,0 +1,101 @@
+#!/bin/bash
+# Check for and display pending background analysis notifications
+# This tool is called by other tools to show background results
+
+set -euo pipefail
+
+# Source environment
+source "$(dirname "$0")/../../.ks-env"
+
+# Usage information
+usage() {
+    cat << EOF
+Usage: $(basename "$0") [options]
+
+Check for and display pending background analysis notifications.
+
+Options:
+  --quiet       Only return exit code, no output
+  --count       Show count of pending notifications
+  --list        List notification files only
+  --help        Show this help message
+
+Exit codes:
+  0 - Notifications found and displayed
+  1 - No notifications found
+  2 - Error accessing notification directory
+
+This tool is typically called automatically by other tools to show
+background analysis results. Use cleanup-stale-notifications to
+archive processed notifications.
+EOF
+}
+
+# Parse arguments
+QUIET=false
+COUNT_ONLY=false
+LIST_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --quiet)
+            QUIET=true
+            shift
+            ;;
+        --count)
+            COUNT_ONLY=true
+            shift
+            ;;
+        --list)
+            LIST_ONLY=true
+            shift
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+# Check if notifications directory exists
+if [ ! -d "$KS_NOTIFICATIONS_DIR" ]; then
+    if [ "$QUIET" = false ]; then
+        echo "No notifications directory found." >&2
+    fi
+    exit 1
+fi
+
+# Find recent notifications
+notifications=$(find "$KS_NOTIFICATIONS_DIR" -name "*.md" -mtime -7 2>/dev/null | sort)
+
+if [ -z "$notifications" ]; then
+    if [ "$QUIET" = false ]; then
+        echo "No pending notifications found."
+    fi
+    exit 1
+fi
+
+# Count notifications
+notification_count=$(echo "$notifications" | wc -l)
+
+if [ "$COUNT_ONLY" = true ]; then
+    echo "$notification_count"
+    exit 0
+fi
+
+if [ "$LIST_ONLY" = true ]; then
+    echo "$notifications"
+    exit 0
+fi
+
+if [ "$QUIET" = true ]; then
+    exit 0  # Found notifications, no output
+fi
+
+# Display notifications using shared function
+ks_check_background_results

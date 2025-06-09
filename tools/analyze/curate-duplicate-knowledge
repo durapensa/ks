@@ -1,0 +1,276 @@
+#!/bin/bash
+# Curate duplicate knowledge to prevent KG pollution
+# Analyzes new content against existing knowledge to detect redundancy
+
+set -euo pipefail
+
+# Source environment
+source "$(dirname "$0")/../../.ks-env"
+
+# Check for background analysis results
+ks_check_background_results
+
+# Configuration
+SIMILARITY_THRESHOLD="${KS_SIMILARITY_THRESHOLD:-0.7}"
+CURATION_WINDOW="${KS_CURATION_WINDOW:-30}"  # Days to check for duplicates
+
+# Usage information
+usage() {
+    cat << EOF
+Usage: $(basename "$0") [options] <content>
+
+Analyze content for redundancy against existing knowledge to prevent
+knowledge graph pollution with similar or duplicate insights.
+
+Options:
+  --content <text>         Content to check for duplicates
+  --type <type>           Knowledge type: themes, connections, insights
+  --threshold <float>     Similarity threshold (0.0-1.0, default: $SIMILARITY_THRESHOLD)
+  --window <days>         Days to check back for duplicates (default: $CURATION_WINDOW)
+  --sources <paths>       Specific sources to check (comma-separated)
+  --verbose               Show detailed similarity analysis
+  --help                  Show this help message
+
+Exit codes:
+  0 - Content is unique, safe to add
+  1 - Content is redundant, should not be added
+  2 - Error in analysis
+
+Examples:
+  $(basename "$0") --content "Memory systems analysis" --type themes
+  $(basename "$0") --threshold 0.8 --content "Temporal knowledge patterns"
+  echo "New insight" | $(basename "$0") --type insights
+EOF
+}
+
+# Parse arguments
+CONTENT=""
+KNOWLEDGE_TYPE="general"
+VERBOSE=false
+SOURCES=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --content)
+            CONTENT="$2"
+            shift 2
+            ;;
+        --type)
+            KNOWLEDGE_TYPE="$2"
+            shift 2
+            ;;
+        --threshold)
+            SIMILARITY_THRESHOLD="$2"
+            shift 2
+            ;;
+        --window)
+            CURATION_WINDOW="$2"
+            shift 2
+            ;;
+        --sources)
+            SOURCES="$2"
+            shift 2
+            ;;
+        --verbose)
+            VERBOSE=true
+            shift
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            if [ -z "$CONTENT" ]; then
+                CONTENT="$1"
+            else
+                echo "Unknown option: $1" >&2
+                usage >&2
+                exit 2
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Read from stdin if no content provided
+if [ -z "$CONTENT" ]; then
+    if [ -t 0 ]; then
+        echo "Error: No content provided and stdin is empty" >&2
+        usage >&2
+        exit 2
+    fi
+    CONTENT=$(cat)
+fi
+
+# Validate content
+if [ -z "$CONTENT" ]; then
+    echo "Error: Content cannot be empty" >&2
+    exit 2
+fi
+
+# Validate threshold
+if ! echo "$SIMILARITY_THRESHOLD" | grep -qE '^[0-9]*\.?[0-9]+$'; then
+    echo "Error: Threshold must be a decimal number between 0.0 and 1.0" >&2
+    exit 2
+fi
+
+# Extract key terms from content for comparison
+extract_key_terms() {
+    local text="$1"
+    # Extract words, convert to lowercase, filter meaningful terms (3+ chars)
+    echo "$text" | grep -oE '[a-zA-Z]{3,}' | tr '[:upper:]' '[:lower:]' | sort -u
+}
+
+# Calculate term overlap similarity
+calculate_similarity() {
+    local content1="$1"
+    local content2="$2"
+    
+    local terms1=$(extract_key_terms "$content1")
+    local terms2=$(extract_key_terms "$content2")
+    
+    if [ -z "$terms1" ] || [ -z "$terms2" ]; then
+        echo "0.0"
+        return
+    fi
+    
+    # Count common terms
+    local common_count=$(comm -12 <(echo "$terms1") <(echo "$terms2") | wc -l)
+    local total_terms1=$(echo "$terms1" | wc -l)
+    local total_terms2=$(echo "$terms2" | wc -l)
+    
+    # Use Jaccard similarity: intersection / union
+    local union_count=$((total_terms1 + total_terms2 - common_count))
+    
+    if [ "$union_count" -eq 0 ]; then
+        echo "0.0"
+    else
+        echo "scale=3; $common_count / $union_count" | bc -l
+    fi
+}
+
+# Check against recent notifications
+check_notifications() {
+    local content="$1"
+    local knowledge_type="$2"
+    
+    if [ "$VERBOSE" = true ]; then
+        echo "Checking against recent notifications..." >&2
+    fi
+    
+    # Find recent notifications of the same type
+    local pattern="*${knowledge_type}*"
+    local notifications=$(find "$KS_NOTIFICATIONS_DIR" -name "${pattern}.md" -mtime -$CURATION_WINDOW 2>/dev/null || true)
+    
+    if [ -z "$notifications" ]; then
+        if [ "$VERBOSE" = true ]; then
+            echo "No recent notifications found for type: $knowledge_type" >&2
+        fi
+        return 0
+    fi
+    
+    for notification in $notifications; do
+        if [ -f "$notification" ]; then
+            local existing_content=$(cat "$notification")
+            local similarity=$(calculate_similarity "$content" "$existing_content")
+            
+            if [ "$VERBOSE" = true ]; then
+                echo "Similarity with $(basename "$notification"): $similarity" >&2
+            fi
+            
+            # Check if similarity exceeds threshold
+            if (( $(echo "$similarity > $SIMILARITY_THRESHOLD" | bc -l) )); then
+                echo "Content is redundant (similarity: $similarity with $(basename "$notification"))"
+                return 1
+            fi
+        fi
+    done
+    
+    return 0
+}
+
+# Check against derived knowledge
+check_derived_knowledge() {
+    local content="$1"
+    local knowledge_type="$2"
+    
+    if [ "$VERBOSE" = true ]; then
+        echo "Checking against derived knowledge..." >&2
+    fi
+    
+    # Check appropriate derived directory
+    local derived_dir="$KS_DERIVED_DIR"
+    case "$knowledge_type" in
+        themes)
+            derived_dir="$KS_DERIVED_DIR/concepts"
+            ;;
+        connections)
+            derived_dir="$KS_DERIVED_DIR/connections"
+            ;;
+        insights)
+            derived_dir="$KS_DERIVED_DIR/insights"
+            ;;
+    esac
+    
+    if [ ! -d "$derived_dir" ]; then
+        if [ "$VERBOSE" = true ]; then
+            echo "No derived directory found: $derived_dir" >&2
+        fi
+        return 0
+    fi
+    
+    # Check recent derived content
+    local derived_files=$(find "$derived_dir" -name "*.md" -mtime -$CURATION_WINDOW 2>/dev/null || true)
+    
+    for file in $derived_files; do
+        if [ -f "$file" ]; then
+            local existing_content=$(cat "$file")
+            local similarity=$(calculate_similarity "$content" "$existing_content")
+            
+            if [ "$VERBOSE" = true ]; then
+                echo "Similarity with $(basename "$file"): $similarity" >&2
+            fi
+            
+            if (( $(echo "$similarity > $SIMILARITY_THRESHOLD" | bc -l) )); then
+                echo "Content is redundant (similarity: $similarity with derived knowledge: $(basename "$file"))"
+                return 1
+            fi
+        fi
+    done
+    
+    return 0
+}
+
+# Main curation logic
+main() {
+    if [ "$VERBOSE" = true ]; then
+        echo "Curating content: $(echo "$CONTENT" | head -c 50)..." >&2
+        echo "Type: $KNOWLEDGE_TYPE, Threshold: $SIMILARITY_THRESHOLD" >&2
+    fi
+    
+    # Check against notifications
+    if ! check_notifications "$CONTENT" "$KNOWLEDGE_TYPE"; then
+        exit 1
+    fi
+    
+    # Check against derived knowledge
+    if ! check_derived_knowledge "$CONTENT" "$KNOWLEDGE_TYPE"; then
+        exit 1
+    fi
+    
+    if [ "$VERBOSE" = true ]; then
+        echo "Content is unique and safe to add." >&2
+    else
+        echo "Content is unique."
+    fi
+    
+    exit 0
+}
+
+# Dependency check
+if ! command -v bc > /dev/null; then
+    echo "Error: bc (calculator) is required for similarity calculations" >&2
+    exit 2
+fi
+
+main

@@ -8,6 +8,9 @@ set -euo pipefail
 # Source configuration
 source "$(dirname "$0")/../../.ks-env"
 
+# Check for background analysis results
+ks_check_background_results
+
 # All paths come from .ks-env
 
 # Parse arguments
