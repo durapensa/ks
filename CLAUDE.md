@@ -26,8 +26,10 @@ knowledge/      # Personal data (gitignored)
 
 ## Important Notes
 
-- **Testing Commands**: Be extremely careful when running bash commands that modify the knowledge base (especially the hot.jsonl file). Always create backups before testing log rotation or file manipulation. The event log is append-only by design - corrupting it breaks the entire system.
-- **Archive Testing**: When testing archive functionality, use proper JSONL format - each line must be a complete JSON object. Simple head/tail commands can break JSON structure.
+- **JSONL Format**: The knowledge event log uses JSONL (JSON Lines) format where each line is a complete, valid JSON object. This format is grep-friendly and supports streaming operations.
+- **Data Integrity**: The event log is append-only by design. Always create backups before testing log rotation or file manipulation.
+- **Format Validation**: Use `tools/utils/validate-jsonl` to check file integrity.
+- **Migration Tool**: If you encounter multi-line JSON format, use `tools/utils/migrate-to-jsonl.py` to convert to proper JSONL format.
 
 ## Active Development
 

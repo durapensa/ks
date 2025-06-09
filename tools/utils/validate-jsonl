@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+# validate-jsonl - Validate JSONL file format
+# Usage: validate-jsonl <file>
+
+set -euo pipefail
+
+# Source configuration
+source "$(dirname "$0")/../.ks-env"
+
+if [ $# -ne 1 ]; then
+    echo "Usage: validate-jsonl <file>" >&2
+    exit 1
+fi
+
+FILE="$1"
+
+if [ ! -f "$FILE" ]; then
+    echo "Error: File '$FILE' not found" >&2
+    exit 1
+fi
+
+# Check if file is empty
+if [ ! -s "$FILE" ]; then
+    echo "✓ File is empty (valid JSONL)" >&2
+    exit 0
+fi
+
+# Validate each line is valid JSON
+ERROR_COUNT=0
+LINE_COUNT=0
+
+while IFS= read -r line; do
+    LINE_COUNT=$((LINE_COUNT + 1))
+    if [ -n "$line" ]; then
+        if ! echo "$line" | jq -e . >/dev/null 2>&1; then
+            echo "✗ Line $LINE_COUNT: Invalid JSON" >&2
+            echo "  $line" | head -c 80 >&2
+            echo "..." >&2
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+        fi
+    fi
+done < "$FILE"
+
+if [ $ERROR_COUNT -eq 0 ]; then
+    echo "✓ All $LINE_COUNT lines are valid JSON (JSONL format verified)" >&2
+    
+    # Additional validation for knowledge events
+    if [[ "$FILE" == *"knowledge/events"* ]]; then
+        # Check required fields
+        MISSING_FIELDS=0
+        while IFS= read -r line; do
+            if [ -n "$line" ]; then
+                # Check for required fields
+                if ! echo "$line" | jq -e 'has("ts") and has("type") and has("topic") and has("content")' >/dev/null 2>&1; then
+                    MISSING_FIELDS=$((MISSING_FIELDS + 1))
+                fi
+            fi
+        done < "$FILE"
+        
+        if [ $MISSING_FIELDS -gt 0 ]; then
+            echo "⚠ Warning: $MISSING_FIELDS events missing required fields (ts, type, topic, content)" >&2
+        else
+            echo "✓ All events have required fields" >&2
+        fi
+    fi
+    exit 0
+else
+    echo "✗ Found $ERROR_COUNT invalid lines out of $LINE_COUNT total" >&2
+    exit 1
+fi

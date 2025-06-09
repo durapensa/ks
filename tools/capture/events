@@ -38,8 +38,8 @@ fi
 # Generate timestamp
 TIMESTAMP=$(ks_timestamp)
 
-# Create JSON event
-jq -n \
+# Create JSON event (compact format for JSONL)
+jq -nc \
     --arg ts "$TIMESTAMP" \
     --arg type "$TYPE" \
     --arg topic "$TOPIC" \
