@@ -42,5 +42,23 @@ ks_validate_event_type() {
     esac
 }
 
+ks_claude() {
+    # Wrapper for Claude CLI that unwraps the result
+    # Usage: ks_claude [claude options] "prompt"
+    # Returns just the actual content, not the metadata wrapper
+    
+    local result
+    result=$(claude "$@")
+    
+    # Check if it's a wrapped result
+    if echo "$result" | jq -e '.result' >/dev/null 2>&1; then
+        # Extract the actual result content
+        echo "$result" | jq -r '.result'
+    else
+        # Return as-is if not wrapped
+        echo "$result"
+    fi
+}
+
 # Initialize on source
 ks_ensure_dirs

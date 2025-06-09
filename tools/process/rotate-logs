@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+# rotate-logs - Rotate knowledge event logs from hot to archive
+# Usage: rotate-logs [--force] [--max-size <bytes>] [--max-age <hours>] [--max-events <count>]
+
+set -euo pipefail
+
+# Source configuration
+source "$(dirname "$0")/../../.ks-env"
+
+# Default rotation thresholds
+MAX_SIZE=${MAX_SIZE:-5242880}     # 5MB default
+MAX_AGE=${MAX_AGE:-168}           # 7 days default (in hours)
+MAX_EVENTS=${MAX_EVENTS:-1000}    # 1000 events default
+FORCE_ROTATE=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --force)
+            FORCE_ROTATE=true
+            shift
+            ;;
+        --max-size)
+            MAX_SIZE="$2"
+            shift 2
+            ;;
+        --max-age)
+            MAX_AGE="$2"
+            shift 2
+            ;;
+        --max-events)
+            MAX_EVENTS="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: rotate-logs [options]"
+            echo ""
+            echo "Options:"
+            echo "  --force              Force rotation regardless of thresholds"
+            echo "  --max-size <bytes>   Rotate when file exceeds size (default: 5MB)"
+            echo "  --max-age <hours>    Rotate when oldest event exceeds age (default: 168h)"
+            echo "  --max-events <count> Rotate when event count exceeds limit (default: 1000)"
+            echo ""
+            echo "Rotation creates archive/YYYY-MM-DD-HHMMSS.jsonl files"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Use --help for usage information" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Ensure directories exist
+ks_ensure_dirs
+
+# Check if hot log exists and has content
+if [ ! -f "$KS_HOT_LOG" ] || [ ! -s "$KS_HOT_LOG" ]; then
+    echo "No events to rotate (hot log is empty or missing)"
+    exit 0
+fi
+
+# Validate JSONL format before rotation
+echo "Validating JSONL format..."
+if ! "$(dirname "$0")/../utils/validate-jsonl" "$KS_HOT_LOG" >/dev/null 2>&1; then
+    echo "ERROR: Hot log has invalid JSONL format. Please fix before rotating." >&2
+    echo "Run: tools/utils/validate-jsonl $KS_HOT_LOG" >&2
+    exit 1
+fi
+
+# Function to check if rotation is needed
+should_rotate() {
+    if [ "$FORCE_ROTATE" = true ]; then
+        echo "Force rotation requested"
+        return 0
+    fi
+    
+    # Check file size
+    local file_size=$(stat -f%z "$KS_HOT_LOG" 2>/dev/null || stat -c%s "$KS_HOT_LOG" 2>/dev/null || echo 0)
+    if [ "$file_size" -gt "$MAX_SIZE" ]; then
+        echo "File size ($file_size bytes) exceeds limit ($MAX_SIZE bytes)"
+        return 0
+    fi
+    
+    # Check event count
+    local event_count=$(wc -l < "$KS_HOT_LOG" | tr -d ' ')
+    if [ "$event_count" -gt "$MAX_EVENTS" ]; then
+        echo "Event count ($event_count) exceeds limit ($MAX_EVENTS)"
+        return 0
+    fi
+    
+    # Check age of oldest event
+    local first_timestamp=$(head -1 "$KS_HOT_LOG" | jq -r '.ts' 2>/dev/null || echo "")
+    if [ -n "$first_timestamp" ]; then
+        local first_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$first_timestamp" +%s 2>/dev/null || date -d "$first_timestamp" +%s 2>/dev/null || echo 0)
+        local current_epoch=$(date +%s)
+        local age_hours=$(( (current_epoch - first_epoch) / 3600 ))
+        
+        if [ "$age_hours" -gt "$MAX_AGE" ]; then
+            echo "Oldest event age (${age_hours}h) exceeds limit (${MAX_AGE}h)"
+            return 0
+        fi
+    fi
+    
+    return 1
+}
+
+# Lock file to prevent concurrent rotations
+LOCK_FILE="${KS_HOT_LOG}.lock"
+exec 200>"$LOCK_FILE"
+
+if ! flock -n 200; then
+    echo "Another rotation is in progress"
+    exit 1
+fi
+
+# Check if rotation is needed
+if ! should_rotate; then
+    echo "No rotation needed"
+    rm -f "$LOCK_FILE"
+    exit 0
+fi
+
+# Generate archive filename
+ARCHIVE_FILE="${KS_ARCHIVE_DIR}/$(date +%Y-%m-%d-%H%M%S).jsonl"
+
+# Perform rotation
+echo "Rotating $KS_HOT_LOG to $ARCHIVE_FILE"
+
+# Move hot log to archive (atomic operation)
+mv "$KS_HOT_LOG" "$ARCHIVE_FILE"
+
+# Create new empty hot log
+touch "$KS_HOT_LOG"
+
+# Set proper permissions
+chmod 644 "$KS_HOT_LOG"
+
+# Get event count from archive
+EVENT_COUNT=$(wc -l < "$ARCHIVE_FILE" | tr -d ' ')
+
+echo "Rotation complete: $EVENT_COUNT events archived"
+
+# Cleanup lock file
+rm -f "$LOCK_FILE"

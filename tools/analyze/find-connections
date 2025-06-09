@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # find-connections - Find conceptual connections between knowledge events
-# Usage: find-connections [--topic TOPIC]
+# Usage: find-connections [options]
 
 set -euo pipefail
 
@@ -10,6 +10,8 @@ source "$(dirname "$0")/../../.ks-env"
 
 # Default values
 TOPIC_FILTER=""
+FORMAT="text"
+DAYS=30
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -18,12 +20,35 @@ while [[ $# -gt 0 ]]; do
             TOPIC_FILTER="$2"
             shift 2
             ;;
+        --format)
+            FORMAT="$2"
+            shift 2
+            ;;
+        --days)
+            DAYS="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: find-connections [options]"
+            echo ""
+            echo "Options:"
+            echo "  --topic TOPIC    Filter by specific topic"
+            echo "  --days N         Analyze events from last N days (default: 30)"
+            echo "  --format FORMAT  Output format: text, json, markdown (default: text)"
+            echo ""
+            echo "Find conceptual connections between knowledge events using AI analysis"
+            exit 0
+            ;;
         *)
             echo "Unknown option: $1" >&2
+            echo "Use --help for usage information" >&2
             exit 1
             ;;
     esac
 done
+
+# Calculate date range
+SINCE_DATE=$(date -u -v-${DAYS}d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "${DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
 
 # Build filter
 FILTER="."
@@ -31,7 +56,63 @@ if [ -n "$TOPIC_FILTER" ]; then
     FILTER="$FILTER | select(.topic == \"$TOPIC_FILTER\")"
 fi
 
-# Extract events and analyze connections
-cat "$KS_HOT_LOG" 2>/dev/null | \
-    jq -r "$FILTER | \"\(.topic): \(.content)\"" | \
-    claude --model "$KS_MODEL" --print --output-format json "Find conceptual connections between these events. Return JSON: {connections: [{concepts: [string], relationship: string, strength: number, evidence: string}]}"
+# Collect events from hot log and archives
+EVENTS=""
+
+# Add hot log events
+if [ -f "$KS_HOT_LOG" ] && [ -s "$KS_HOT_LOG" ]; then
+    HOT_EVENTS=$(jq -r "$FILTER | select(.ts >= \"$SINCE_DATE\") | \"\(.topic): \(.content)\"" "$KS_HOT_LOG" 2>/dev/null)
+    if [ -n "$HOT_EVENTS" ]; then
+        EVENTS="$HOT_EVENTS"
+    fi
+fi
+
+# Add archive events
+if [ -d "$KS_ARCHIVE_DIR" ]; then
+    for archive in $(find "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f | sort -r); do
+        if [ -f "$archive" ] && [ -s "$archive" ]; then
+            ARCHIVE_EVENTS=$(jq -r "$FILTER | select(.ts >= \"$SINCE_DATE\") | \"\(.topic): \(.content)\"" "$archive" 2>/dev/null)
+            if [ -n "$ARCHIVE_EVENTS" ]; then
+                if [ -n "$EVENTS" ]; then
+                    EVENTS="$EVENTS
+$ARCHIVE_EVENTS"
+                else
+                    EVENTS="$ARCHIVE_EVENTS"
+                fi
+            fi
+        fi
+    done
+fi
+
+if [ -z "$EVENTS" ]; then
+    echo "No events found${TOPIC_FILTER:+ for topic '$TOPIC_FILTER'} in the last $DAYS days"
+    exit 0
+fi
+
+# Get analysis from Claude using wrapper function
+ANALYSIS=$(echo "$EVENTS" | ks_claude --model "$KS_MODEL" --print --output-format json "Find conceptual connections between these events. Return JSON: {connections: [{concepts: [string], relationship: string, strength: number, evidence: string}]}")
+
+# Clean up any markdown code blocks if present
+if echo "$ANALYSIS" | grep -q '```json'; then
+    ANALYSIS=$(echo "$ANALYSIS" | sed -n '/```json/,/```/p' | sed '1d;$d')
+fi
+
+# Format output based on requested format
+case "$FORMAT" in
+    json)
+        echo "$ANALYSIS"
+        ;;
+    markdown)
+        echo "# Knowledge Connections Analysis"
+        echo ""
+        echo "_Analysis of events${TOPIC_FILTER:+ for topic '$TOPIC_FILTER'} from the last ${DAYS} days_"
+        echo ""
+        echo "$ANALYSIS" | jq -r '.connections[] | "## \(.concepts | join(" ↔ "))\n\n**Relationship:** \(.relationship)\n\n**Strength:** \(.strength)/10\n\n**Evidence:** \(.evidence)\n"'
+        ;;
+    text|*)
+        echo "=== KNOWLEDGE CONNECTIONS ANALYSIS ==="
+        echo "${TOPIC_FILTER:+Topic: $TOPIC_FILTER | }Events from last $DAYS days"
+        echo ""
+        echo "$ANALYSIS" | jq -r '.connections[] | "CONCEPTS: \(.concepts | join(" <-> "))\nRELATIONSHIP: \(.relationship)\nSTRENGTH: \(.strength)/10\nEVIDENCE: \(.evidence)\n"'
+        ;;
+esac
