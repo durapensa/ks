@@ -6,15 +6,27 @@
 ## Current Focus
 
 ### 1. Unified Knowledge Graph Implementation (Issue #18)
-**Status**: Phase 1 in progress
+**Status**: Phase 1 complete!
 **Completed**:
 - Implemented stream.jsonl separation for Claude conversation captures
 - Added [Claude] prefix detection in events tool
 - Fixed timestamp field consistency (ts everywhere)
-**Next Steps**:
-- Implement dual-write in review-findings (hot.jsonl summary + derived/approved.jsonl full)
-- Add enriched metadata tracking for approved findings
-- Implement rejected findings storage
+- Implemented dual-write system in review-findings:
+  - Summary writes to hot.jsonl with derived_ref
+  - Full findings write to derived/approved.jsonl with enriched metadata
+  - Bidirectional linking via unique derived_ref IDs
+- Added enriched metadata tracking:
+  - Analysis type, model, completion time, approval time
+  - Unique ID format: timestamp-analysis_type-index
+- Implemented rejected findings storage:
+  - Stores to derived/rejected.jsonl
+  - Captures rejection reason and improvement notes
+  - Supports learning from rejected patterns
+
+**Next Steps** (Phase 2):
+- Build concept extraction and clustering for distillation
+- Implement weight calculation algorithm
+- Create periodic distillation background job
 
 ### 2. Test Suite Stabilization (Issue #15)
 **Status**: Phase 1 complete - all fast tests passing (23/23)
