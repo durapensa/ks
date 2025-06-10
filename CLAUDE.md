@@ -17,6 +17,8 @@ Personal knowledge system with event-sourced architecture for capturing thoughts
 chat/           # Conversation context with symlinks
 tools/          # Categorized processing tools
 knowledge/      # Personal data (gitignored)
+lib/            # Core library modules
+tools/lib/      # Tool-specific library modules
 .ks-env         # Centralized environment configuration
 ```
 
@@ -31,6 +33,30 @@ knowledge/      # Personal data (gitignored)
 - **Format Validation**: Use `tools/utils/validate-jsonl` to check file integrity.
 - **Migration Tool**: If you encounter multi-line JSON format, use `tools/utils/migrate-to-jsonl.py` to convert to proper JSONL format.
 - **Cross-Platform Compatibility**: On macOS, `setup.sh` automatically configures GNU coreutils for consistent date/stat behavior across platforms.
+## Library System
+
+Scripts use modular libraries to load only needed functions:
+
+### Core Libraries (`lib/`)
+- **core.sh** - Essential utilities: directory creation, timestamps, input validation
+- **events.sh** - Event validation and counting
+- **files.sh** - JSONL file collection and ordering
+
+### Tools Libraries (`tools/lib/`)
+- **claude.sh** - Claude AI integration and analysis formatting
+- **queue.sh** - Background analysis queue management
+- **process.sh** - Background process tracking and locking
+
+### Usage Example
+```bash
+#!/usr/bin/env bash
+source "$(dirname "$0")/../../.ks-env"
+ks_source_lib core      # Essential utilities
+ks_source_lib files     # If processing files
+ks_source_lib claude    # If using Claude
+```
+
+Scripts load ~50-200 lines instead of the old 420-line monolithic library.
 
 ## Development Workflow
 

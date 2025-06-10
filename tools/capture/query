@@ -5,9 +5,11 @@
 
 set -euo pipefail
 
-# Source configuration
+# Source configuration and modular libraries
 source "$(dirname "$0")/../../.ks-env"
-source "$KS_ROOT/.ks-lib"
+ks_source_lib core      # For ks_timestamp (used by queue)
+ks_source_lib files     # For ks_collect_files
+ks_source_lib queue     # For ks_check_background_results
 
 # Check for background analysis results
 ks_check_background_results || true

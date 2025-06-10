@@ -4,9 +4,12 @@
 
 set -euo pipefail
 
-# Source environment
+# Source environment and modular libraries
 source "$(dirname "$0")/../../.ks-env"
-source "$KS_ROOT/.ks-lib"
+ks_source_lib core      # For ks_timestamp
+ks_source_lib events    # For ks_count_new_events
+ks_source_lib files     # For ks_collect_files
+ks_source_lib queue     # For ks_queue_list_pending, ks_queue_check, ks_queue_add_pending
 
 # Configuration
 EVENT_THRESHOLD_THEMES="${KS_EVENT_THRESHOLD_THEMES:-10}"

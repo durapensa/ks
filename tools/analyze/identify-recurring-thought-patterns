@@ -4,9 +4,9 @@
 
 set -euo pipefail
 
-# Source environment and library
+# Source environment and modular libraries
 source "$(dirname "$0")/../../.ks-env"
-source "$KS_ROOT/.ks-lib"
+ks_source_lib claude    # For ks_claude_analyze, ks_format_analysis
 
 # Default configuration
 TIME_WINDOW_DAYS="${TIME_WINDOW_DAYS:-3}"

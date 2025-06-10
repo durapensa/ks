@@ -4,9 +4,10 @@
 
 set -euo pipefail
 
-# Source environment
+# Source environment and modular libraries
 source "$(dirname "$0")/../../.ks-env"
-source "$KS_ROOT/.ks-lib"
+ks_source_lib core      # For ks_timestamp
+ks_source_lib queue     # For ks_queue_list_pending, ks_queue_clear
 
 # ANSI color codes
 GREEN='\033[0;32m'

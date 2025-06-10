@@ -3,9 +3,11 @@
 
 set -euo pipefail
 
-# Source environment
+# Source environment and modular libraries
 source "$(dirname "$0")/../../.ks-env"
-source "$KS_ROOT/.ks-lib"
+ks_source_lib core      # For ks_timestamp (used by queue)
+ks_source_lib queue     # For ks_check_background_results
+ks_source_lib process   # For ks_cleanup_stale_processes
 
 # Check for background analysis results
 ks_check_background_results || true  # Don't fail if no notifications
