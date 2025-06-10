@@ -47,7 +47,9 @@ ks_register_background_process() {
     local pid="$2"
     local description="${3:-}"
     
-    local process_file="$KS_PROCESS_REGISTRY/active/${task_name}-${pid}.json"
+    # Sanitize task name for safe filename
+    local safe_task_name=$(ks_sanitize_string "$task_name")
+    local process_file="$KS_PROCESS_REGISTRY/active/${safe_task_name}-${pid}.json"
     
     cat > "$process_file" << EOF
 {
@@ -70,9 +72,11 @@ ks_complete_background_process() {
     local status="$3"  # success or failed
     local output_file="${4:-}"
     
-    local active_file="$KS_PROCESS_REGISTRY/active/${task_name}-${pid}.json"
+    # Sanitize task name for safe filename
+    local safe_task_name=$(ks_sanitize_string "$task_name")
+    local active_file="$KS_PROCESS_REGISTRY/active/${safe_task_name}-${pid}.json"
     local target_dir="$KS_PROCESS_REGISTRY/$status"
-    local target_file="$target_dir/${task_name}-${pid}.json"
+    local target_file="$target_dir/${safe_task_name}-${pid}.json"
     
     if [[ -f "$active_file" ]]; then
         # Add completion information

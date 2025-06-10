@@ -21,7 +21,8 @@ ks_sanitize_string() {
     
     # Remove or escape potentially dangerous characters
     # Allow alphanumeric, spaces, hyphens, underscores, periods, colons
-    echo "$input" | sed 's/[^a-zA-Z0-9 \-_.:\\/]//g'
+    # Then replace spaces with underscores for safe filenames
+    echo "$input" | sed 's/[^a-zA-Z0-9 _.:\/-]//g' | sed 's/ /_/g'
 }
 
 ks_validate_days() {

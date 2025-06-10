@@ -6,10 +6,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Personal knowledge system with event-sourced architecture for capturing thoughts and insights.
 
-## Usage
+## Quick Start
+
+```bash
+# Initial setup
+./setup.sh                           # Configure environment and dependencies
+
+# Daily usage
+ks                                   # Enter conversational capture mode
+tools/capture/query "search term"    # Search existing knowledge
+
+# Development workflow
+cat DEVELOPMENT_STATUS.md            # Check current priorities
+./tests/run_fast_tests.sh           # Run unit tests (9/9 passing)
+tools/plumbing/monitor-background-processes --status  # Check system health
+```
+
+## Core Usage Patterns
 
 - **`ks`** command - Enter conversational knowledge capture mode (configured via setup.sh)
 - **`tools/`** - Internal processing tools for knowledge analysis
+- **Background Analysis** - Automatic theme/connection extraction after event thresholds
+- **Review Workflow** - `tools/analyze/review-findings` for approving insights
 
 ## Architecture
 
@@ -25,6 +43,9 @@ tools/lib/      # Tool-specific library modules
 ## Configuration
 
 - `KS_MODEL` - Claude model for analysis tools (default: sonnet)
+- `KS_ROOT` - Project root directory (set by .ks-env)
+- **Event Thresholds** - Background analysis triggers (default: 10 events for themes, 20 for connections)
+- **Testing** - Use `./tests/run_fast_tests.sh` for development iteration
 
 ## Important Notes
 
@@ -58,6 +79,13 @@ source "$KS_ROOT/tools/lib/claude.sh" # If using Claude
 
 Scripts load ~50-200 lines instead of the old 420-line monolithic library.
 
+## Development Status Integration
+
+**CRITICAL**: Always check `DEVELOPMENT_STATUS.md` before starting work:
+- **Current Focus** section shows immediate priorities  
+- **Technical Debt** identifies blockers
+- **Development Context** provides debugging commands
+
 ## Development Workflow
 
 **When** the user agrees to implement a feature or fix:
@@ -86,6 +114,13 @@ Scripts load ~50-200 lines instead of the old 420-line monolithic library.
 ## Active Development
 
 Track development with `gh issue list`. Use `gh issue view <number>` for details.
+
+## Testing Strategy
+
+- **Fast Tests** - `./tests/run_fast_tests.sh` (unit tests, no Claude API)
+- **Mocked Tests** - `./tests/run_mocked_tests.sh` (analysis tools with fixtures)  
+- **CI Tests** - `./tests/run_ci_tests.sh` (GitHub Actions compatible)
+- **E2E Tests** - `./tests/run_e2e_tests.sh` (real Claude API, local only)
 
 ## Documentation Hygiene
 

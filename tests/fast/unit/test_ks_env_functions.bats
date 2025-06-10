@@ -15,7 +15,7 @@ setup() {
     export KS_ARCHIVE_DIR="$KS_EVENTS_DIR/archive"
     export KS_BACKGROUND_DIR="$KS_KNOWLEDGE_DIR/.background"
     export KS_PROCESS_REGISTRY="$KS_BACKGROUND_DIR/processes"
-    export KS_NOTIFICATIONS_DIR="$KS_KNOWLEDGE_DIR/.notifications"
+    export KS_ANALYSIS_QUEUE="$KS_BACKGROUND_DIR/analysis_queue.json"
     
     # Source the environment (will use our overrides)
     source "$KS_ROOT/.ks-env"
@@ -142,37 +142,38 @@ teardown() {
     [[ "$process_data" == *"\"end_time\":"* ]]
 }
 
-@test "notification file creation (manual test)" {
-    # Since ks_create_notification doesn't exist, test manual creation
-    local notification_file="$KS_NOTIFICATIONS_DIR/test-$(date +%s).md"
-    local content="Test notification content"
+@test "ks_queue_add_pending adds analysis to queue" {
+    # Test adding a pending analysis
+    local findings_file="$TEST_KS_ROOT/findings/test-findings.json"
+    mkdir -p "$(dirname "$findings_file")"
+    echo '{"findings": []}' > "$findings_file"
     
-    # Create notification manually
-    echo "$content" > "$notification_file"
+    # Add to queue
+    ks_queue_add_pending "test-analysis" "$findings_file"
     
-    # Check file exists
-    [ -f "$notification_file" ]
-    
-    # Verify content
-    local stored=$(cat "$notification_file")
-    [ "$stored" = "$content" ]
+    # Verify it was added
+    local status=$(jq -r '.analyses."test-analysis".status' "$KS_ANALYSIS_QUEUE")
+    [ "$status" = "pending_review" ]
 }
 
-@test "ks_check_background_results displays notifications" {
-    # Create test notifications
-    echo -e "# Test Notification 1\n\nFirst notification content" > "$KS_NOTIFICATIONS_DIR/test1.md"
-    echo -e "# Test Notification 2\n\nSecond notification content" > "$KS_NOTIFICATIONS_DIR/test2.md"
+@test "ks_check_background_results displays pending analyses" {
+    # Add test analyses to queue
+    local findings_file1="$TEST_KS_ROOT/findings/test1.json"
+    local findings_file2="$TEST_KS_ROOT/findings/test2.json"
+    mkdir -p "$(dirname "$findings_file1")"
+    echo '{"findings": []}' > "$findings_file1"
+    echo '{"findings": []}' > "$findings_file2"
     
-    # Check notifications
+    ks_queue_add_pending "theme-analysis" "$findings_file1"
+    ks_queue_add_pending "connection-analysis" "$findings_file2"
+    
+    # Check for pending analyses
     run ks_check_background_results
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Background Analysis Results"* ]]
-    [[ "$output" == *"First notification"* ]]
-    [[ "$output" == *"Second notification"* ]]
-    
-    # Note: This function doesn't remove files, just displays them
-    [ -f "$KS_NOTIFICATIONS_DIR/test1.md" ]
-    [ -f "$KS_NOTIFICATIONS_DIR/test2.md" ]
+    [[ "$output" == *"Background Analyses Ready for Review"* ]]
+    [[ "$output" == *"theme-analysis"* ]]
+    [[ "$output" == *"connection-analysis"* ]]
+    [[ "$output" == *"2 analysis/analyses pending review"* ]]
 }
 
 @test "ks_acquire_background_lock acquires and releases lock" {

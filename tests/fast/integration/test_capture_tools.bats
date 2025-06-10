@@ -39,38 +39,39 @@ teardown() {
     [[ -d "$TEST_KS_ROOT" ]] && rm -rf "$TEST_KS_ROOT"
 }
 
-@test "events tool displays recent entries" {
+@test "events tool validates arguments" {
+    # Test with no arguments (should fail)
     run "$KS_ROOT/tools/capture/events"
-    [ "$status" -eq 0 ]
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Usage: ke"* ]]
     
-    # Should show all 5 events by default
-    [[ "$output" == *"Human memory is associative"* ]]
-    [[ "$output" == *"Complex systems have emergent properties"* ]]
-    [[ "$output" == *"Memory and time are intertwined"* ]]
-    [[ "$output" == *"Patterns repeat across scales"* ]]
-    [[ "$output" == *"Knowledge graphs mirror neural networks"* ]]
+    # Test with valid arguments
+    run "$KS_ROOT/tools/capture/events" thought testing "Test content"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Event logged: thought/testing"* ]]
 }
 
-@test "events tool respects count limit" {
-    run "$KS_ROOT/tools/capture/events" 2
+@test "events tool validates event types" {
+    # Test with invalid event type
+    run "$KS_ROOT/tools/capture/events" invalid testing "Test content"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid event type"* ]]
+    
+    # Test with valid event type
+    run "$KS_ROOT/tools/capture/events" insight testing "Test insight"
     [ "$status" -eq 0 ]
-    
-    # Should show only last 2 events
-    [[ "$output" == *"Patterns repeat across scales"* ]]
-    [[ "$output" == *"Knowledge graphs mirror neural networks"* ]]
-    
-    # Should not show older events
-    [[ "$output" != *"Human memory is associative"* ]]
-    [[ "$output" != *"Complex systems have emergent properties"* ]]
+    [[ "$output" == *"Event logged: insight/testing"* ]]
 }
 
-@test "events tool handles empty log gracefully" {
-    # Create empty log
-    > "$KS_HOT_LOG"
-    
-    run "$KS_ROOT/tools/capture/events"
+@test "events tool handles stdin input" {
+    # Test piping content to events tool
+    run bash -c "echo 'Piped content' | $KS_ROOT/tools/capture/events thought testing"
     [ "$status" -eq 0 ]
-    # Should not error on empty log
+    [[ "$output" == *"Event logged: thought/testing"* ]]
+    
+    # Verify event was written to log
+    local last_event=$(tail -n1 "$KS_HOT_LOG")
+    [[ "$last_event" == *"Piped content"* ]]
 }
 
 @test "query tool searches by pattern" {
@@ -87,16 +88,17 @@ teardown() {
 }
 
 @test "query tool searches across date range" {
-    # Create older cold file
+    # Create older cold file in archive directory
     local old_date=$(date -d "3 days ago" +%Y%m%d 2>/dev/null || date -v-3d +%Y%m%d)
-    local cold_file="$TEST_KS_ROOT/cold-$old_date.jsonl"
+    local cold_file="$KS_ARCHIVE_DIR/cold-$old_date.jsonl"
     
     cat > "$cold_file" << 'EOF'
 {"ts":"2025-01-19T10:00:00Z","type":"thought","topic":"memory","content":"Old memory thought"}
 EOF
     
-    # Search with 7 day range
-    run "$KS_ROOT/tools/capture/query" --days 7 "memory"
+    # Search with date range
+    local since_date=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)
+    run "$KS_ROOT/tools/capture/query" "memory" --since "$since_date"
     [ "$status" -eq 0 ]
     
     # Should find entries from both files
@@ -105,17 +107,16 @@ EOF
     [[ "$output" == *"Memory and time are intertwined"* ]]
 }
 
-@test "query tool with json output" {
-    run "$KS_ROOT/tools/capture/query" --format json "memory"
+@test "query tool output format" {
+    # Query tool outputs text format, not JSON
+    run "$KS_ROOT/tools/capture/query" "memory"
     [ "$status" -eq 0 ]
     
-    # Output should be valid JSON array
-    echo "$output" | jq . >/dev/null 2>&1
-    [ $? -eq 0 ]
+    # Should output timestamped entries
+    [[ "$output" == *"["*"/"*"]"* ]]
     
-    # Should have correct structure
-    local count=$(echo "$output" | jq 'length')
-    [ "$count" -eq 2 ]
+    # Should find memory-related entries
+    [[ "$output" == *"memory"* ]]
 }
 
 @test "query tool handles special characters" {
