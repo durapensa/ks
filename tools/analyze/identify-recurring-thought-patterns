@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# identify-recurring-thought-patterns - Extract recurring themes from knowledge entries
+# Pure analysis function: accepts input, returns themed analysis
+
+set -euo pipefail
+
+# Source environment
+source "$(dirname "$0")/../../.ks-env"
+
+# Default configuration
+TIME_WINDOW_DAYS="${TIME_WINDOW_DAYS:-3}"
+
+# Usage
+usage() {
+    cat << EOF
+Usage: $(basename "$0") [options] < input
+
+Identify recurring thought patterns and themes from knowledge entries.
+Reads event content from stdin, outputs analysis to stdout.
+
+Options:
+  --days N          Filter to last N days (default: $TIME_WINDOW_DAYS)
+  --raw             Input is already filtered content (skip date filtering)
+  --help            Show this help message
+
+Input format:
+  - JSONL events (default) - will extract .content field
+  - Raw text with --raw flag
+
+Output format:
+  - JSON with identified themes and patterns
+
+Example:
+  cat knowledge/events-*.jsonl | $(basename "$0") --days 7
+EOF
+}
+
+# Parse arguments
+RAW_INPUT=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --days)
+            TIME_WINDOW_DAYS="$2"
+            shift 2
+            ;;
+        --raw)
+            RAW_INPUT=true
+            shift
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Prepare input for analysis
+input_file=$(mktemp)
+if [ "$RAW_INPUT" = "true" ]; then
+    # Input is already filtered content
+    cat > "$input_file"
+else
+    # Input is JSONL events, extract content from time window
+    since_date=$(date -u -d "$TIME_WINDOW_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
+    jq -r --arg since_date "$since_date" \
+        'select(.ts >= $since_date) | .content' > "$input_file"
+fi
+
+# Check if we have any content
+if [ ! -s "$input_file" ]; then
+    echo '{"error": "No content to analyze"}' >&2
+    rm -f "$input_file"
+    exit 1
+fi
+
+# Define analysis prompt
+prompt="Extract 2-3 key themes from these knowledge events. For each theme, provide:
+1. Theme name (concise)
+2. Brief description (1-2 sentences)
+3. Supporting evidence from the content
+
+Format as JSON with themes array. Focus on patterns and connections rather than isolated thoughts."
+
+# Run analysis
+if claude -p "$prompt" < "$input_file" 2>/dev/null; then
+    rm -f "$input_file"
+    exit 0
+else
+    echo '{"error": "Analysis failed"}' >&2
+    rm -f "$input_file"
+    exit 1
+fi

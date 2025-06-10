@@ -73,7 +73,14 @@ Update `DEVELOPMENT_STATUS.md` after significant changes to maintain session con
 
 ## Communication Style
 
-**NEVER use emojis or pictographic symbols** in any documentation, code comments, or GitHub issues. Use clear, professional text-only communication.
+**Never use emojis or pictographic symbols** in any documentation, code comments, or GitHub issues. Use clear, professional text-only communication.
+
+**Tone Guidelines**:
+- Avoid excessive capitalization (no ALLCAPS for emphasis)
+- Use measured, professional language
+- Don't declare features "complete" until tested over time
+- Prefer understated descriptions over hyperbole
+- Let results speak for themselves
 
 ## Development Language Guidelines
 

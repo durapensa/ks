@@ -29,10 +29,12 @@ triggering and cost controls.
 
 Options:
   --run             Execute one analysis cycle now
+  --daemon          Run continuously, checking every hour
   --status          Show current background processing status
   --reset           Reset all background processing state
   --force           Force analysis regardless of budget/events
   --test            Run with test data to verify functionality
+  --install-launchd Install as macOS launchd service
   --help            Show this help message
 
 Background processing runs:
@@ -146,9 +148,9 @@ needs_theme_analysis() {
     return 1
 }
 
-# Run small, focused theme analysis using claude -p
+# Run theme analysis using dedicated analysis tool
 run_theme_analysis() {
-    bg_log "Starting theme analysis with claude -p"
+    bg_log "Starting theme analysis"
     
     # Check budget  
     if ! check_budget "0.15"; then
@@ -162,99 +164,61 @@ run_theme_analysis() {
         return 1
     fi
     
-    # Collect events for analysis
-    ks_collect_files
-    local input_file=$(mktemp)
-    local output_file=$(mktemp)
-    
-    if [ ${#FILES_TO_PROCESS[@]} -gt 0 ]; then
-        # Use last 3 days of events for cost control
-        local since_date=$(date -u -d "3 days ago" +%Y-%m-%dT%H:%M:%SZ)
-        cat "${FILES_TO_PROCESS[@]}" | jq -r --arg since_date "$since_date" \
-            'select(.ts >= $since_date) | .content' > "$input_file"
-    else
-        # Use test data if no real events
-        jq -r '.content' "$KS_BACKGROUND_DIR/test-events.jsonl" > "$input_file"
-        bg_log "Using test events for analysis"
-    fi
-    
-    # Check if we have content to analyze
-    if [ ! -s "$input_file" ]; then
-        bg_log "No content available for theme analysis"
-        rm -f "$input_file" "$output_file"
-        ks_release_background_lock
-        return 1
-    fi
-    
-    bg_log "Running claude -p analysis on $(wc -l < "$input_file") content items"
-    
-    # Prepare claude prompt
-    local prompt="Extract 2-3 key themes from these knowledge events. For each theme, provide:
-1. Theme name (concise)
-2. Brief description (1-2 sentences)
-3. Supporting evidence from the content
-
-Format as JSON with themes array. Focus on patterns and connections rather than isolated thoughts."
-    
-    # Run claude analysis in background with process tracking
+    # Run analysis in background
     (
         # Register this process
         ks_register_background_process "theme-analysis" $$ "Theme extraction from recent events"
         
-        # Run claude with timeout and capture output
-        if timeout 120 claude -p "$prompt" < "$input_file" > "$output_file" 2>&1; then
-            # Analysis successful
-            ks_complete_background_process "theme-analysis" $$ "completed" "$output_file"
-        else
-            # Analysis failed
-            ks_complete_background_process "theme-analysis" $$ "failed" "$output_file"
-            exit 1
-        fi
-    ) &
-    
-    local claude_pid=$!
-    bg_log "Started claude analysis process: PID $claude_pid"
-    
-    # Wait for claude process
-    if wait $claude_pid; then
-        bg_log "Claude analysis completed successfully"
+        # Collect events and run analysis tool
+        ks_collect_files
+        local output_file=$(mktemp)
         
-        # Check if we have valid output
-        if [ -s "$output_file" ]; then
-            local themes_output=$(cat "$output_file")
-            
-            # Curate results to prevent redundancy
-            if echo "$themes_output" | tools/analyze/curate-duplicate-knowledge --type themes >/dev/null 2>&1; then
-                # Content is unique, create notification
-                local notification_file="$KS_NOTIFICATIONS_DIR/themes-$(date +%Y%m%d-%H%M%S).md"
-                cat > "$notification_file" << EOF
+        if [ ${#FILES_TO_PROCESS[@]} -gt 0 ]; then
+            # Run analysis on real events
+            if cat "${FILES_TO_PROCESS[@]}" | \
+               timeout 120 tools/analyze/identify-recurring-thought-patterns --days 3 > "$output_file" 2>&1; then
+                # Analysis successful
+                local themes_output=$(cat "$output_file")
+                
+                # Curate results to prevent redundancy
+                if echo "$themes_output" | tools/analyze/curate-duplicate-knowledge --type themes >/dev/null 2>&1; then
+                    # Content is unique, create notification
+                    local notification_file="$KS_NOTIFICATIONS_DIR/themes-$(date +%Y%m%d-%H%M%S).md"
+                    cat > "$notification_file" << EOF
 # Theme Analysis Results
 
 **Generated**: $(ks_timestamp)  
 **Scope**: Last 3 days (background analysis)  
-**Input**: $(wc -l < "$input_file") content items
 
 ## Key Themes Identified
 
 $themes_output
 
 ---
-*This analysis ran automatically in the background using claude -p. Use cleanup-stale-notifications to archive when processed.*
+*This analysis ran automatically in the background. Use cleanup-stale-notifications to archive when reviewed.*
 EOF
-                bg_log "Theme analysis completed, notification created: $(basename "$notification_file")"
+                    bg_log "Theme analysis completed, notification created: $(basename "$notification_file")"
+                else
+                    bg_log "Theme analysis results were redundant, notification skipped"
+                fi
+                
+                ks_complete_background_process "theme-analysis" $$ "completed" "$output_file"
             else
-                bg_log "Theme analysis results were redundant, notification skipped"
+                # Analysis failed
+                ks_complete_background_process "theme-analysis" $$ "failed" "$output_file"
             fi
         else
-            bg_log "Claude analysis produced no output"
+            bg_log "No events available for theme analysis"
+            ks_complete_background_process "theme-analysis" $$ "skipped" "No events"
         fi
-    else
-        bg_log "Claude analysis failed or timed out"
-    fi
+        
+        # Cleanup
+        rm -f "$output_file"
+        ks_release_background_lock
+    ) &
     
-    # Cleanup
-    rm -f "$input_file" "$output_file"
-    ks_release_background_lock
+    local analysis_pid=$!
+    bg_log "Started theme analysis process: PID $analysis_pid (running async)"
     
     # Update state
     LAST_THEME_ANALYSIS=$(ks_timestamp)
@@ -341,7 +305,9 @@ run_analysis_cycle() {
         fi
     fi
     
-    # TODO: Add connection analysis, insight generation, etc.
+    # Future: Add calls to other analysis tools:
+    # - tools/analyze/surface-deep-connections
+    # - tools/analyze/synthesize-emergent-insights
     
     save_state
     bg_log "Analysis cycle completed"
@@ -354,10 +320,72 @@ reset_state() {
     echo "State reset. Next run will start fresh."
 }
 
+# Daemon mode - run continuously
+run_daemon() {
+    bg_log "Starting background analysis daemon (PID $$)"
+    echo $$ > "$KS_BACKGROUND_DIR/daemon.pid"
+    
+    trap 'bg_log "Daemon shutting down"; rm -f "$KS_BACKGROUND_DIR/daemon.pid"; exit 0' SIGTERM SIGINT
+    
+    while true; do
+        bg_log "Daemon checking for analysis needs"
+        run_analysis_cycle false
+        
+        # Sleep for 1 hour
+        bg_log "Daemon sleeping for 1 hour"
+        sleep 3600
+    done
+}
+
+# Install launchd service for macOS
+install_launchd() {
+    local plist_name="com.ks.background-analysis"
+    local plist_file="$HOME/Library/LaunchAgents/${plist_name}.plist"
+    local script_path="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+    
+    echo "Installing launchd service: $plist_name"
+    
+    cat > "$plist_file" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${plist_name}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${script_path}</string>
+        <string>--daemon</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>StandardOutPath</key>
+    <string>$KS_BACKGROUND_DIR/daemon.log</string>
+    <key>StandardErrorPath</key>
+    <string>$KS_BACKGROUND_DIR/daemon.error.log</string>
+</dict>
+</plist>
+EOF
+    
+    echo "Loading service..."
+    launchctl load "$plist_file"
+    
+    echo "Service installed and started!"
+    echo "To check status: launchctl list | grep $plist_name"
+    echo "To uninstall: launchctl unload $plist_file && rm $plist_file"
+}
+
 # Parse arguments
 case "${1:-run}" in
     --run|run)
         run_analysis_cycle false
+        ;;
+    --daemon)
+        run_daemon
         ;;
     --force)
         run_analysis_cycle true
@@ -372,6 +400,9 @@ case "${1:-run}" in
         ;;
     --reset)
         reset_state
+        ;;
+    --install-launchd)
+        install_launchd
         ;;
     --help)
         usage

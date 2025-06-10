@@ -113,6 +113,86 @@ Events are stored in JSONL (JSON Lines) format - one JSON object per line:
 
 Event types: `thought`, `connection`, `question`, `insight`, `process`
 
+## Background Analysis
+
+The system can automatically run analysis in the background to surface themes and insights.
+
+### Daemon Mode
+
+Run continuously in a terminal or screen session:
+
+```bash
+tools/plumbing/schedule-analysis-cycles --daemon
+```
+
+This will:
+- Check every hour for analysis needs
+- Respect event thresholds and budget limits
+- Write PID to `knowledge/.background/daemon.pid`
+- Log to `knowledge/.background/analysis.log`
+
+### macOS launchd (Recommended)
+
+Install as a system service that starts on login:
+
+```bash
+tools/plumbing/schedule-analysis-cycles --install-launchd
+```
+
+Manage the service:
+```bash
+# Check status
+launchctl list | grep com.ks.background-analysis
+
+# Stop/start service
+launchctl unload ~/Library/LaunchAgents/com.ks.background-analysis.plist
+launchctl load ~/Library/LaunchAgents/com.ks.background-analysis.plist
+```
+
+### Cron (Unix/Linux)
+
+Add to your crontab:
+```bash
+# Run every hour
+0 * * * * /path/to/ks/tools/plumbing/schedule-analysis-cycles --run
+```
+
+### Background Analysis Configuration
+
+```bash
+# Daily budget in USD (default: 0.50)
+export KS_ANALYSIS_BUDGET="1.00"
+
+# Minimum events to trigger analysis (default: 5)
+export KS_MIN_EVENTS_FOR_ANALYSIS="10"
+```
+
+### Monitoring Background Processing
+
+```bash
+# View current state
+tools/plumbing/schedule-analysis-cycles --status
+
+# Monitor processes
+tools/plumbing/monitor-background-processes --status
+
+# Check logs
+tail -f knowledge/.background/analysis.log
+```
+
+The system automatically tracks spending, respects daily budgets, and creates notifications when insights are discovered.
+
+### Testing Before Production Use
+
+**Important**: Test daemon stability for 2-3 days before relying on automated scheduling.
+
+1. Start daemon: `tools/plumbing/schedule-analysis-cycles --daemon`
+2. Monitor logs: `tail -f knowledge/.background/analysis.log`
+3. Verify hourly execution and check for crashes
+4. Stop test: `kill $(cat knowledge/.background/daemon.pid)`
+
+Only install as a system service after successful multi-day testing.
+
 ## Architecture Benefits
 
 - **Context separation**: Conversation vs analysis modes

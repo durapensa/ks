@@ -1,13 +1,14 @@
 # Development Status & Next Steps
 
-**Last Updated**: June 9, 2025  
-**Current Phase**: Background processing functional and tested - prioritized roadmap established for next development phase
+**Last Updated**: January 22, 2025  
+**Current Phase**: Implementing comprehensive test suite with smart Claude API separation (#15)
 
 ## Major Recent Accomplishments
 
-### ✅ Background Processing System (Functional and Tested)
+### Background Processing System (Functional, needs extended testing)
 - **Process Management**: Full registry with active/completed/failed tracking
-- **Real Claude Integration**: schedule-analysis-cycles uses `claude -p` with 120s timeouts  
+- **Real Claude Integration**: Analysis tools use claude with timeouts  
+- **Async operation**: Fixed - processes now run truly in background
 - **Universal Notifications**: All tools display background results automatically
 - **KG Curation**: Similarity-based duplicate prevention (curate-duplicate-knowledge)
 - **Cost Controls**: Daily budget tracking and cost-controlled analysis scopes
@@ -27,65 +28,79 @@
 
 ## Prioritized Development Roadmap
 
-### 1. **Test Suite Foundation** (Issue #15) - **HIGHEST PRIORITY**
+### 1. **Test Suite Foundation** (Issue #15) - **IN ACTIVE DEVELOPMENT**
 **Why Critical**: Building on quicksand without tests. The background system's complexity requires automated testing to prevent silent breakage.
 
-**Implementation Plan**:
+**Current Implementation Status**:
+- Setting up bats-core testing framework
+- Creating three-tier test architecture: fast/mocked/e2e
+- Implementing Claude API mocking system
+- Creating minimal test datasets and fixtures
+
+**Planned Directory Structure**:
 ```bash
-# Create tests/ directory structure
 tests/
-├── test_env.sh          # Test .ks-env functions
-├── test_process_mgmt.sh # Test process lifecycle
-├── test_notifications.sh # Test notification handling
-└── fixtures/            # Mock data and responses
+├── run_fast_tests.sh      # No Claude API, <30s, CI-friendly
+├── run_mocked_tests.sh    # Fake Claude API, <60s, CI-friendly
+├── run_e2e_tests.sh       # Real Claude API, local only
+├── run_ci_tests.sh        # Fast + mocked for GitHub Actions
+├── fast/                  # Unit and integration tests
+│   ├── unit/              # Function-level tests
+│   ├── integration/       # Tool integration tests
+│   └── security/          # Input validation tests
+├── mocked/                # Claude API mocked tests
+│   ├── fixtures/          # Test data and responses
+│   └── test_*.sh          # Analysis tool tests
+├── e2e/                   # End-to-end with real Claude
+└── performance/           # Benchmark tests
 ```
 
-**Quick Wins**:
-- Test `ks_collect_files` function with various date ranges
-- Test process registration/completion/failure flows
-- Mock claude API responses to avoid costs
-- Verify notification creation and display logic
+**Implementation Plan**:
+1. **Phase 1**: Fast test foundation (bats-core setup, unit tests)
+2. **Phase 2**: Mocked analysis tests (Claude response fixtures)
+3. **Phase 3**: Smart E2E testing (cached responses, minimal datasets)
 
-### 2. **Automated Background Scheduling** (Issue #3) - **HIGH VALUE, LOW EFFORT**
-**Why Important**: The system is a Ferrari that requires manual ignition. Automation unlocks continuous value.
+**Key Design Decisions**:
+- No Claude API calls in CI/CD (GitHub Actions)
+- Mock `ks_claude()` function for predictable testing
+- Minimal test datasets (5-10 events) for fast execution
+- Response caching for development iteration
 
-**Implementation Approach**:
-```bash
-# Option 1: Add --daemon mode to schedule-analysis-cycles
-while true; do
-    ./schedule-analysis-cycles
-    sleep 21600  # 6 hours
-done
+### 2. **Automated Background Scheduling** (Issue #3) - **Implemented, needs testing**
+**Progress**: Added scheduling options to schedule-analysis-cycles:
 
-# Option 2: Simple cron entry
-*/6 * * * * /path/to/tools/plumbing/schedule-analysis-cycles
+- **Daemon mode**: `--daemon` flag runs continuously, checking hourly
+- **macOS service**: `--install-launchd` creates system service
+- **Cron compatible**: Works with standard cron scheduling
 
-# Option 3: macOS launchd plist
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"...>
-```
+**Documentation**: Added to README.md Background Analysis section
+**Next steps**: Run daemon for several days to verify stability before closing issue
 
-### 3. **Connection Analysis Implementation** (Issue #16) - **EXPAND CAPABILITIES**
-**Why Valuable**: Infrastructure exists but only one analysis type implemented.
+### 3. **Async Background Processing** - **Fixed**
+**What was wrong**: Background processing blocked with `wait $claude_pid`
 
-### 4. **Interactive Mode Enhancements** (Issue #11) - **USER EXPERIENCE**
+**What was fixed**:
+- Removed blocking wait calls
+- Process runs truly async now
+- Verified with testing - returns immediately while analysis continues
+- Process registry tracks completion properly
+
+### 4. **Background Analysis Tools** (Issue #16) - **In progress**
+**Architecture refactoring completed**:
+- Separated analysis logic from process management
+- Created `identify-recurring-thought-patterns` for theme analysis
+- Schedule-analysis-cycles now calls external tools
+
+**Remaining tools to implement**:
+1. `surface-deep-connections` - Find non-obvious connections
+2. `synthesize-emergent-insights` - Generate higher-level insights
+
+**Pattern established**:
+- Short names (e.g., `extract-themes`) for interactive use
+- Long names (e.g., `identify-recurring-thought-patterns`) for background processing
+
+### 5. **Interactive Mode Enhancements** (Issue #11) - **USER EXPERIENCE**
 **Why**: Make knowledge capture more fluid and contextual.
-
-**Implementation in schedule-analysis-cycles**:
-```bash
-run_connection_analysis() {
-    local events_file="$1"
-    prompt="Analyze these knowledge entries for deep, non-obvious connections..."
-    # Reuse existing infrastructure
-    run_claude_analysis "$events_file" "$prompt" "connection"
-}
-
-case "$analysis_type" in
-    theme) run_theme_analysis "$events_file" ;;
-    connection) run_connection_analysis "$events_file" ;;
-    insight) run_insight_analysis "$events_file" ;;  # Future
-esac
-```
 
 ### 5. **Derived Knowledge Pipeline** (Issue #10) - **KNOWLEDGE SYNTHESIS**
 **Why**: Background analysis generates insights but doesn't persist them structurally.
@@ -102,25 +117,36 @@ esac
 - Enable queries across derived knowledge
 - Version control for concept evolution
 
-## Immediate Action Items (Next Session)
+## Immediate Next Steps
 
-### If Prioritizing Safety and Quality:
-1. **Start with Test Suite** (Issue #15)
-   - Create `tests/test_env.sh`
-   - Test critical functions: `ks_collect_files`, `ks_register_background_process`
-   - Add GitHub Actions workflow for CI
+### 1. **Test Daemon Stability** (Issue #3)
+**Required before closing issue**:
+- Run daemon mode for 2-3 days: `tools/plumbing/schedule-analysis-cycles --daemon`
+- Monitor logs: `tail -f knowledge/.background/analysis.log`
+- Verify proper hourly execution without crashes
+- Test launchd service on macOS if applicable
 
-### If Prioritizing User Value:
-1. **Implement Automated Scheduling** (Issue #3)
-   - Add `--daemon` flag to schedule-analysis-cycles
-   - Create launchd plist for macOS
-   - Document setup process
+### 2. **Complete Background Analysis Tools** (Issue #16)
+**Implementation tasks**:
+1. Create `tools/analyze/surface-deep-connections`
+   - Pure analysis function like `identify-recurring-thought-patterns`
+   - Find non-obvious connections between knowledge entries
+   - Output JSON with discovered connections
 
-### If Prioritizing Feature Expansion:
-1. **Implement Connection Analysis** (Issue #16)
-   - Add new analysis type to schedule-analysis-cycles
-   - Create connection-specific prompts
-   - Test with existing notification system
+2. Create `tools/analyze/synthesize-emergent-insights`
+   - Combine outputs from theme and connection analysis
+   - Generate higher-level conceptual insights
+   - Output structured insights in JSON
+
+3. Update `schedule-analysis-cycles` to call new tools
+   - Add connection and insight analysis cases
+   - Test each analysis type independently
+
+### 3. **Begin Test Suite** (Issue #15)
+**Foundation needed**:
+- Test the refactored analysis architecture
+- Mock claude responses to avoid API costs
+- Verify async process management works correctly
 
 ## Current Technical Debt
 
@@ -152,14 +178,31 @@ esac
 
 ## Active Issues Status
 
-- **Issue #5**: Notification system - ✅ COMPLETED and closed
-- **Issue #3**: Background scheduler - 🟡 FUNCTIONAL with comprehensive analysis, needs automation only
-- **Issue #14**: Performance optimization - ⚪ DEFERRED until performance impacts user experience
-- **Issue #15**: Test suite design - 🔴 CRITICAL for ongoing development
-- **Issue #10**: Derived knowledge pipeline - 🟡 Ready for implementation
+**Completed**:
+- **Issue #5**: Notification system - Closed
+
+**In Testing**:
+- **Issue #3**: Background scheduler - Daemon implemented, needs multi-day stability test
+
+**In Progress**:
+- **Issue #16**: Background analysis tools - Theme analysis done, 2 tools remaining
+
+**Ready to Start**:
+- **Issue #15**: Test suite - Critical for safe development
+- **Issue #10**: Derived knowledge pipeline - Architecture ready
+- **Issue #11**: Interactive mode enhancements - Design complete
+
+**Deferred**:
+- **Issue #14**: Performance optimization - Current performance acceptable
 
 ---
 
-**System Status**: Background processing functional with industrial-strength process management in a file-based architecture.
+**System Status**: Background processing now runs asynchronously. Architecture properly separates analysis logic from process management. Daemon scheduling implemented but needs multi-day testing.
 
-**Next Priority**: Test suite foundation (Issue #15) to ensure safe iteration, followed by automated scheduling (Issue #3) for immediate user value. Clear implementation roadmap established for systematic enhancement of the knowledge system.**
+**Today's Progress**: 
+- Fixed async processing - background tasks run without blocking
+- Refactored architecture - clean separation of analysis and process management
+- Added daemon mode and launchd support for scheduling
+- Created pattern for background analysis tools
+
+**Next Session Priority**: Monitor daemon for stability, then implement remaining analysis tools.
