@@ -51,3 +51,6 @@ jq -nc \
     >> "$KS_HOT_LOG"
 
 echo "Event logged: $TYPE/$TOPIC"
+
+# Check event triggers for background analyses
+tools/plumbing/check-event-triggers silent &

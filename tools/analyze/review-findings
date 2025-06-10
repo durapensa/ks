@@ -1,0 +1,269 @@
+#!/bin/bash
+# Interactive tool to review and approve/reject analysis findings
+# Run this in a separate terminal when ks notifies of pending findings
+
+set -euo pipefail
+
+# Source environment
+source "$(dirname "$0")/../../.ks-env"
+
+# ANSI color codes
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Usage information
+usage() {
+    cat << EOF
+Usage: $(basename "$0") [options]
+
+Interactive tool to review findings from background analyses.
+Run this in a separate terminal when notified of pending reviews.
+
+Options:
+  --list        List pending analyses without reviewing
+  --help        Show this help message
+
+This tool will:
+1. Show each finding from completed analyses
+2. Allow you to approve (y) or reject (n) each finding
+3. Approved findings are integrated into your knowledge base
+4. Clear the analysis from the queue when complete
+
+Examples:
+  $(basename "$0")           # Start interactive review
+  $(basename "$0") --list    # See what's pending
+EOF
+}
+
+# Display a finding with formatting
+display_finding() {
+    local finding="$1"
+    local index="$2"
+    local total="$3"
+    
+    echo -e "\n${BOLD}Finding ${index}/${total}${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    # Extract finding details
+    local content=$(echo "$finding" | jq -r '.content // .theme // .insight // .pattern // "No content"')
+    local type=$(echo "$finding" | jq -r '.type // "unknown"')
+    local confidence=$(echo "$finding" | jq -r '.confidence // "N/A"')
+    local context=$(echo "$finding" | jq -r '.context // ""')
+    
+    echo -e "${BOLD}Type:${NC} $type"
+    if [ "$confidence" != "N/A" ]; then
+        echo -e "${BOLD}Confidence:${NC} $confidence"
+    fi
+    
+    echo -e "\n${BOLD}Content:${NC}"
+    echo "$content" | fold -s -w 70 | sed 's/^/  /'
+    
+    if [ -n "$context" ] && [ "$context" != "null" ]; then
+        echo -e "\n${BOLD}Context:${NC}"
+        echo "$context" | fold -s -w 70 | sed 's/^/  /'
+    fi
+    
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+# Integrate approved finding into knowledge base
+integrate_finding() {
+    local finding="$1"
+    local analysis_type="$2"
+    
+    # Create event from approved finding
+    local event_type="insight"  # Default to insight
+    case "$analysis_type" in
+        themes|theme-analysis)
+            event_type="insight"
+            ;;
+        connections|connection-analysis)
+            event_type="connection"
+            ;;
+        patterns|pattern-analysis)
+            event_type="insight"
+            ;;
+    esac
+    
+    # Extract content for the event
+    local content=$(echo "$finding" | jq -r '.content // .theme // .insight // .pattern // "Approved finding"')
+    local metadata=$(echo "$finding" | jq -c '{source: "background-analysis", approved_at: now | strftime("%Y-%m-%dT%H:%M:%SZ")}')
+    
+    # Create the event
+    local event=$(jq -n \
+        --arg content "$content" \
+        --arg type "$event_type" \
+        --arg timestamp "$(ks_timestamp)" \
+        --argjson metadata "$metadata" \
+        '{
+            timestamp: $timestamp,
+            type: $type,
+            content: $content,
+            metadata: $metadata
+        }')
+    
+    # Append to hot log
+    echo "$event" >> "$KS_HOT_LOG"
+    
+    return 0
+}
+
+# Review findings for a specific analysis
+review_analysis() {
+    local analysis_type="$1"
+    local findings_file="$2"
+    
+    if [ ! -f "$findings_file" ]; then
+        echo -e "${RED}Error: Findings file not found: $findings_file${NC}"
+        return 1
+    fi
+    
+    # Load findings
+    local findings=$(jq -c '.findings[]? // .[]' "$findings_file" 2>/dev/null || echo "[]")
+    local count=$(echo "$findings" | wc -l)
+    
+    if [ -z "$findings" ] || [ "$count" -eq 0 ]; then
+        echo -e "${YELLOW}No findings in file${NC}"
+        ks_queue_clear "$analysis_type"
+        return 0
+    fi
+    
+    echo -e "\n${BOLD}Reviewing $analysis_type findings${NC}"
+    echo -e "Found ${GREEN}$count${NC} findings to review\n"
+    
+    local approved=0
+    local rejected=0
+    local index=0
+    
+    # Review each finding
+    while IFS= read -r finding; do
+        index=$((index + 1))
+        
+        # Skip empty lines
+        [ -z "$finding" ] && continue
+        
+        # Display the finding
+        display_finding "$finding" "$index" "$count"
+        
+        # Get user decision
+        while true; do
+            echo -ne "\n${BOLD}Approve this finding? (y/n/q):${NC} "
+            read -r response
+            
+            case "$response" in
+                [yY])
+                    if integrate_finding "$finding" "$analysis_type"; then
+                        echo -e "${GREEN}✓ Finding approved and integrated${NC}"
+                        approved=$((approved + 1))
+                    else
+                        echo -e "${RED}✗ Failed to integrate finding${NC}"
+                    fi
+                    break
+                    ;;
+                [nN])
+                    echo -e "${YELLOW}✗ Finding rejected${NC}"
+                    rejected=$((rejected + 1))
+                    break
+                    ;;
+                [qQ])
+                    echo -e "\n${YELLOW}Review cancelled. Queue not cleared.${NC}"
+                    return 1
+                    ;;
+                *)
+                    echo -e "${RED}Please enter y (yes), n (no), or q (quit)${NC}"
+                    ;;
+            esac
+        done
+    done <<< "$findings"
+    
+    # Summary
+    echo -e "\n${BOLD}Review Complete${NC}"
+    echo -e "Approved: ${GREEN}$approved${NC}"
+    echo -e "Rejected: ${YELLOW}$rejected${NC}"
+    
+    # Clear from queue
+    ks_queue_clear "$analysis_type"
+    echo -e "\n${GREEN}✓ Analysis cleared from queue${NC}"
+    
+    # Archive the findings file
+    local archive_dir="$KS_BACKGROUND_DIR/reviewed"
+    mkdir -p "$archive_dir"
+    mv "$findings_file" "$archive_dir/$(basename "$findings_file").$(date +%Y%m%d-%H%M%S)"
+    
+    return 0
+}
+
+# List pending analyses
+list_pending() {
+    local pending=$(ks_queue_list_pending)
+    
+    if [ "$pending" = "[]" ]; then
+        echo -e "${YELLOW}No analyses pending review${NC}"
+        return 0
+    fi
+    
+    echo -e "${BOLD}Pending Analyses:${NC}\n"
+    
+    echo "$pending" | jq -r '.[] | "• \(.type) - completed at \(.value.completed_at)"'
+    
+    echo -e "\nRun $(basename "$0") to review these findings"
+}
+
+# Main review loop
+main_review() {
+    # Check for pending analyses
+    local pending=$(ks_queue_list_pending)
+    
+    if [ "$pending" = "[]" ]; then
+        echo -e "${YELLOW}No analyses pending review${NC}"
+        exit 0
+    fi
+    
+    echo -e "${BOLD}Knowledge System - Finding Review${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    # Process each pending analysis
+    echo "$pending" | jq -c '.[]' | while IFS= read -r analysis; do
+        local type=$(echo "$analysis" | jq -r '.type')
+        local findings_file=$(echo "$analysis" | jq -r '.value.findings_file')
+        
+        echo -e "\n${BOLD}Analysis type:${NC} $type"
+        
+        # Ask if user wants to review this analysis
+        echo -ne "Review this analysis now? (y/n): "
+        read -r response
+        
+        case "$response" in
+            [yY])
+                review_analysis "$type" "$findings_file"
+                ;;
+            *)
+                echo -e "${YELLOW}Skipped${NC}"
+                ;;
+        esac
+    done
+    
+    echo -e "\n${GREEN}Review session complete${NC}"
+}
+
+# Parse arguments
+case "${1:-}" in
+    --list)
+        list_pending
+        ;;
+    --help)
+        usage
+        ;;
+    "")
+        main_review
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+esac

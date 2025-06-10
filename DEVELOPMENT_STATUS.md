@@ -1,7 +1,7 @@
 # Development Status & Next Steps
 
-**Last Updated**: January 22, 2025  
-**Current Phase**: Implementing comprehensive test suite with smart Claude API separation (#15)
+**Last Updated**: January 30, 2025  
+**Current Phase**: Event-driven background analysis with interactive review system
 
 ## Major Recent Accomplishments
 
@@ -83,15 +83,26 @@ tests/
 - Implement response caching system for E2E tests
 - Test GitHub Actions workflow with a PR
 
-### 2. **Automated Background Scheduling** (Issue #3) - **Implemented, needs testing**
-**Progress**: Added scheduling options to schedule-analysis-cycles:
+### 2. **Event-Driven Background Analysis** - **Implemented**
+**Major Architecture Change**: Replaced time-based scheduling with event-driven triggers
 
-- **Daemon mode**: `--daemon` flag runs continuously, checking hourly
-- **macOS service**: `--install-launchd` creates system service
-- **Cron compatible**: Works with standard cron scheduling
+**New Components**:
+- **Event Trigger System**: `tools/plumbing/check-event-triggers`
+  - Automatically spawns analyses based on event count thresholds
+  - Called after each event capture
+  - Configurable thresholds (default: 10 events for themes, 20 for connections)
 
-**Documentation**: Added to README.md Background Analysis section
-**Next steps**: Run daemon for several days to verify stability before closing issue
+- **Analysis Queue**: JSON-based queue prevents duplicate analyses
+  - Tracks pending reviews
+  - Blocks new analyses until user reviews findings
+
+- **Interactive Review Tool**: `tools/analyze/review-findings`
+  - Run in separate terminal as instructed
+  - Shows each finding individually
+  - Y/N approval creates new events from approved findings
+  - Clears queue after review
+
+**Deprecated**: `schedule-analysis-cycles --install-launchd` (time-based approach)
 
 ### 3. **Async Background Processing** - **Fixed**
 **What was wrong**: Background processing blocked with `wait $claude_pid`
@@ -136,12 +147,12 @@ tests/
 
 ## Immediate Next Steps
 
-### 1. **Test Daemon Stability** (Issue #3)
-**Required before closing issue**:
-- Run daemon mode for 2-3 days: `tools/plumbing/schedule-analysis-cycles --daemon`
-- Monitor logs: `tail -f knowledge/.background/analysis.log`
-- Verify proper hourly execution without crashes
-- Test launchd service on macOS if applicable
+### 1. **Test Event-Driven System**
+**Validation needed**:
+- Capture 10+ events to trigger theme analysis
+- Run `tools/analyze/review-findings` when notified
+- Verify approved findings create new events
+- Check queue blocking prevents duplicate analyses
 
 ### 2. **Complete Background Analysis Tools** (Issue #16)
 **Implementation tasks**:
@@ -188,10 +199,12 @@ tests/
 4. **Quality Iteration**: Consider adding relevance scoring to prioritize notifications
 
 ### Current Development Environment
-- **Background Processing**: `tools/plumbing/schedule-analysis-cycles --force` for testing
+- **Event Triggers**: Automatic after each `tools/capture/events` call
+- **Review Findings**: `tools/analyze/review-findings` in separate terminal
+- **Queue Status**: `cat knowledge/.background/analysis_queue.json`
+- **Trigger State**: `cat knowledge/.background/.event_trigger_state`
+- **Manual Trigger**: `tools/plumbing/check-event-triggers verbose`
 - **Process Monitoring**: `tools/plumbing/monitor-background-processes --status`
-- **Architecture**: Background system uses `knowledge/.background/` for state/logs
-- **State Inspection**: `cat knowledge/.background/state` to see current status
 
 ## Active Issues Status
 

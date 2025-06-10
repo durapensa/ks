@@ -9,6 +9,7 @@ source "$(dirname "$0")/../../.ks-env"
 
 # Default configuration
 TIME_WINDOW_DAYS="${TIME_WINDOW_DAYS:-3}"
+FORMAT="text"
 
 # Usage
 usage() {
@@ -21,6 +22,7 @@ Reads event content from stdin, outputs analysis to stdout.
 Options:
   --days N          Filter to last N days (default: $TIME_WINDOW_DAYS)
   --raw             Input is already filtered content (skip date filtering)
+  --format FORMAT   Output format: text, json (default: text)
   --help            Show this help message
 
 Input format:
@@ -46,6 +48,10 @@ while [[ $# -gt 0 ]]; do
         --raw)
             RAW_INPUT=true
             shift
+            ;;
+        --format)
+            FORMAT="$2"
+            shift 2
             ;;
         --help|-h)
             usage
@@ -86,12 +92,27 @@ prompt="Extract 2-3 key themes from these knowledge events. For each theme, prov
 
 Format as JSON with themes array. Focus on patterns and connections rather than isolated thoughts."
 
-# Run analysis
-if claude -p "$prompt" < "$input_file" 2>/dev/null; then
-    rm -f "$input_file"
-    exit 0
-else
+# Run analysis and capture result
+result=$(claude -p "$prompt" < "$input_file" 2>/dev/null)
+analysis_status=$?
+
+rm -f "$input_file"
+
+if [ $analysis_status -ne 0 ]; then
     echo '{"error": "Analysis failed"}' >&2
-    rm -f "$input_file"
     exit 1
 fi
+
+# Output based on format
+case "$FORMAT" in
+    json)
+        echo "$result"
+        ;;
+    text|*)
+        # Convert JSON to readable text format
+        echo "=== RECURRING THOUGHT PATTERNS ==="
+        echo "Analysis window: last $TIME_WINDOW_DAYS days"
+        echo ""
+        echo "$result" | jq -r '.themes[]? // .[] | "PATTERN: \(.name // .theme)\n\(.description)\n\nEvidence:\n\(.evidence // .supporting_quotes | if type == "array" then join("\n- ") else . end)\n"' 2>/dev/null || echo "$result"
+        ;;
+esac

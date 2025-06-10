@@ -24,8 +24,8 @@ usage() {
     cat << EOF
 Usage: $(basename "$0") [options]
 
-Schedule and execute background analysis cycles with intelligent
-triggering and cost controls.
+DEPRECATED: This tool is being replaced by event-driven triggers.
+Use tools/plumbing/check-event-triggers for automatic analysis.
 
 Options:
   --run             Execute one analysis cycle now
@@ -34,7 +34,6 @@ Options:
   --reset           Reset all background processing state
   --force           Force analysis regardless of budget/events
   --test            Run with test data to verify functionality
-  --install-launchd Install as macOS launchd service
   --help            Show this help message
 
 Background processing runs:
@@ -337,47 +336,6 @@ run_daemon() {
     done
 }
 
-# Install launchd service for macOS
-install_launchd() {
-    local plist_name="com.ks.background-analysis"
-    local plist_file="$HOME/Library/LaunchAgents/${plist_name}.plist"
-    local script_path="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-    
-    echo "Installing launchd service: $plist_name"
-    
-    cat > "$plist_file" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>${plist_name}</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>${script_path}</string>
-        <string>--daemon</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <false/>
-    <key>StartInterval</key>
-    <integer>3600</integer>
-    <key>StandardOutPath</key>
-    <string>$KS_BACKGROUND_DIR/daemon.log</string>
-    <key>StandardErrorPath</key>
-    <string>$KS_BACKGROUND_DIR/daemon.error.log</string>
-</dict>
-</plist>
-EOF
-    
-    echo "Loading service..."
-    launchctl load "$plist_file"
-    
-    echo "Service installed and started!"
-    echo "To check status: launchctl list | grep $plist_name"
-    echo "To uninstall: launchctl unload $plist_file && rm $plist_file"
-}
 
 # Parse arguments
 case "${1:-run}" in
@@ -400,9 +358,6 @@ case "${1:-run}" in
         ;;
     --reset)
         reset_state
-        ;;
-    --install-launchd)
-        install_launchd
         ;;
     --help)
         usage
