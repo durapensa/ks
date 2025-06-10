@@ -150,38 +150,43 @@ calculate_similarity() {
 }
 
 # Check against recent notifications
-check_notifications() {
+check_recent_findings() {
     local content="$1"
     local knowledge_type="$2"
     
     if [ "$VERBOSE" = true ]; then
-        echo "Checking against recent notifications..." >&2
+        echo "Checking against recent analysis findings..." >&2
     fi
     
-    # Find recent notifications of the same type
-    local pattern="*${knowledge_type}*"
-    local notifications=$(find "$KS_NOTIFICATIONS_DIR" -name "${pattern}.md" -mtime -$CURATION_WINDOW 2>/dev/null || true)
+    # Get pending analyses from queue
+    local pending=$(ks_queue_list_pending)
     
-    if [ -z "$notifications" ]; then
+    if [ "$pending" = "[]" ]; then
         if [ "$VERBOSE" = true ]; then
-            echo "No recent notifications found for type: $knowledge_type" >&2
+            echo "No pending analyses to check against" >&2
         fi
         return 0
     fi
     
-    for notification in $notifications; do
-        if [ -f "$notification" ]; then
-            local existing_content=$(cat "$notification")
-            local similarity=$(calculate_similarity "$content" "$existing_content")
+    # Check each pending analysis
+    echo "$pending" | jq -c '.[]' | while IFS= read -r analysis; do
+        local findings_file=$(echo "$analysis" | jq -r '.value.findings_file')
+        
+        if [ -f "$findings_file" ]; then
+            local findings=$(jq -r '.findings[]? // .[]' "$findings_file" 2>/dev/null)
+            local existing_content=$(echo "$findings" | jq -r '.content // .theme // .insight // .pattern // ""' | tr '\n' ' ')
             
-            if [ "$VERBOSE" = true ]; then
-                echo "Similarity with $(basename "$notification"): $similarity" >&2
-            fi
-            
-            # Check if similarity exceeds threshold
-            if (( $(echo "$similarity > $SIMILARITY_THRESHOLD" | bc -l) )); then
-                echo "Content is redundant (similarity: $similarity with $(basename "$notification"))"
-                return 1
+            if [ -n "$existing_content" ]; then
+                local similarity=$(calculate_similarity "$content" "$existing_content")
+                
+                if [ "$VERBOSE" = true ]; then
+                    echo "Similarity with pending findings: $similarity" >&2
+                fi
+                
+                if (( $(echo "$similarity > $SIMILARITY_THRESHOLD" | bc -l) )); then
+                    echo "Content is redundant (similarity: $similarity with pending findings)"
+                    return 1
+                fi
             fi
         fi
     done
@@ -248,8 +253,8 @@ main() {
         echo "Type: $KNOWLEDGE_TYPE, Threshold: $SIMILARITY_THRESHOLD" >&2
     fi
     
-    # Check against notifications
-    if ! check_notifications "$CONTENT" "$KNOWLEDGE_TYPE"; then
+    # Check against recent findings
+    if ! check_recent_findings "$CONTENT" "$KNOWLEDGE_TYPE"; then
         exit 1
     fi
     

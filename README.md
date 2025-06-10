@@ -117,81 +117,68 @@ Event types: `thought`, `connection`, `question`, `insight`, `process`
 
 The system can automatically run analysis in the background to surface themes and insights.
 
-### Daemon Mode
+### Event-Driven Analysis
 
-Run continuously in a terminal or screen session:
-
-```bash
-tools/plumbing/schedule-analysis-cycles --daemon
-```
-
-This will:
-- Check every hour for analysis needs
-- Respect event thresholds and budget limits
-- Write PID to `knowledge/.background/daemon.pid`
-- Log to `knowledge/.background/analysis.log`
-
-### macOS launchd (Recommended)
-
-Install as a system service that starts on login:
+Background analyses are automatically triggered based on event count thresholds:
 
 ```bash
-tools/plumbing/schedule-analysis-cycles --install-launchd
+# Configuration (environment variables)
+export KS_EVENT_THRESHOLD_THEMES=10        # Trigger theme analysis (default: 10)
+export KS_EVENT_THRESHOLD_CONNECTIONS=20   # Trigger connections (default: 20)
+export KS_EVENT_THRESHOLD_PATTERNS=30      # Trigger patterns (default: 30)
 ```
 
-Manage the service:
-```bash
-# Check status
-launchctl list | grep com.ks.background-analysis
+How it works:
+1. Each event capture checks if thresholds are met
+2. Analyses spawn automatically in background
+3. You're notified when findings are ready for review
+4. Review findings in a separate terminal
 
-# Stop/start service
-launchctl unload ~/Library/LaunchAgents/com.ks.background-analysis.plist
-launchctl load ~/Library/LaunchAgents/com.ks.background-analysis.plist
-```
+### Reviewing Analysis Findings
 
-### Cron (Unix/Linux)
-
-Add to your crontab:
-```bash
-# Run every hour
-0 * * * * /path/to/ks/tools/plumbing/schedule-analysis-cycles --run
-```
-
-### Background Analysis Configuration
+When notified of pending analyses:
 
 ```bash
-# Daily budget in USD (default: 0.50)
-export KS_ANALYSIS_BUDGET="1.00"
+# Run in a separate terminal
+tools/analyze/review-findings
 
-# Minimum events to trigger analysis (default: 5)
-export KS_MIN_EVENTS_FOR_ANALYSIS="10"
+# List pending analyses without reviewing
+tools/analyze/review-findings --list
 ```
+
+The review process:
+- Each finding is shown individually
+- Approve (y) or reject (n) each finding
+- Approved findings become new insight events
+- Queue is cleared after review
 
 ### Monitoring Background Processing
 
 ```bash
-# View current state
-tools/plumbing/schedule-analysis-cycles --status
+# Check analysis queue
+cat knowledge/.background/analysis_queue.json | jq .
 
-# Monitor processes
+# Monitor background processes
 tools/plumbing/monitor-background-processes --status
 
-# Check logs
+# Check trigger state
+cat knowledge/.background/.event_trigger_state
+
+# View logs
 tail -f knowledge/.background/analysis.log
 ```
 
-The system automatically tracks spending, respects daily budgets, and creates notifications when insights are discovered.
+### Manual Trigger Testing
 
-### Testing Before Production Use
+```bash
+# Force trigger check (verbose mode)
+tools/plumbing/check-event-triggers verbose
 
-**Important**: Test daemon stability for 2-3 days before relying on automated scheduling.
+# Reset trigger counts if needed
+echo '{"last_count": 0, "last_theme_trigger": 0, "last_connection_trigger": 0, "last_pattern_trigger": 0, "last_check": "2025-01-01T00:00:00Z"}' > knowledge/.background/.event_trigger_state
+```
 
-1. Start daemon: `tools/plumbing/schedule-analysis-cycles --daemon`
-2. Monitor logs: `tail -f knowledge/.background/analysis.log`
-3. Verify hourly execution and check for crashes
-4. Stop test: `kill $(cat knowledge/.background/daemon.pid)`
-
-Only install as a system service after successful multi-day testing.
+The system prevents duplicate analyses by blocking new runs while findings await review.
 
 ## Architecture Benefits
 

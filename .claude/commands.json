@@ -1,0 +1,10 @@
+{
+  "commands": [
+    {
+      "name": "/hk",
+      "description": "Ask Claude Code to perform housekeeping tasks.",
+      "prompt": "wonderful! what other cleanup or housekeeping do we need? (ultrathink)",
+      "args": ["arg1", "arg2"]
+    }
+  ]
+}

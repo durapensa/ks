@@ -85,10 +85,6 @@ spawn_theme_analysis() {
             if [ -s "$findings_file" ]; then
                 # Add to queue
                 ks_queue_add_pending "theme-analysis" "$findings_file"
-                
-                # Create notification file for backwards compatibility
-                local notification="$KS_NOTIFICATIONS_DIR/theme-analysis-ready.txt"
-                echo "Theme analysis complete. Run 'tools/analyze/review-findings' to review." > "$notification"
             else
                 rm -f "$findings_file"
             fi
@@ -119,10 +115,6 @@ spawn_connection_analysis() {
             if [ -s "$findings_file" ]; then
                 # Add to queue
                 ks_queue_add_pending "connection-analysis" "$findings_file"
-                
-                # Create notification
-                local notification="$KS_NOTIFICATIONS_DIR/connection-analysis-ready.txt"
-                echo "Connection analysis complete. Run 'tools/analyze/review-findings' to review." > "$notification"
             else
                 rm -f "$findings_file"
             fi
@@ -156,10 +148,6 @@ spawn_pattern_analysis() {
                 if [ -s "$findings_file" ]; then
                     # Add to queue
                     ks_queue_add_pending "pattern-analysis" "$findings_file"
-                    
-                    # Create notification
-                    local notification="$KS_NOTIFICATIONS_DIR/pattern-analysis-ready.txt"
-                    echo "Pattern analysis complete. Run 'tools/analyze/review-findings' to review." > "$notification"
                 else
                     rm -f "$findings_file"
                 fi
