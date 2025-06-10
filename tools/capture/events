@@ -43,16 +43,32 @@ fi
 # Generate timestamp
 TIMESTAMP=$(ks_timestamp)
 
+# Detect [Claude] prefix for stream separation
+if [[ "$CONTENT" =~ ^\[Claude\]\ * ]]; then
+    TARGET_LOG="$KS_DERIVED_DIR/stream.jsonl"
+    CONTENT="${CONTENT#\[Claude\] }"
+    METADATA='{"source": "claude-conversation"}'
+    mkdir -p "$KS_DERIVED_DIR"
+else
+    TARGET_LOG="$KS_HOT_LOG"
+    METADATA='{}'
+fi
+
 # Create JSON event (compact format for JSONL)
 jq -nc \
     --arg ts "$TIMESTAMP" \
     --arg type "$TYPE" \
     --arg topic "$TOPIC" \
     --arg content "$CONTENT" \
-    '{ts: $ts, type: $type, topic: $topic, content: $content, metadata: {}}' \
-    >> "$KS_HOT_LOG"
+    --argjson metadata "$METADATA" \
+    '{ts: $ts, type: $type, topic: $topic, content: $content, metadata: $metadata}' \
+    >> "$TARGET_LOG"
 
-echo "Event logged: $TYPE/$TOPIC"
+if [[ "$TARGET_LOG" == "$KS_HOT_LOG" ]]; then
+    echo "Event logged: $TYPE/$TOPIC"
+else
+    echo "Event logged to stream: $TYPE/$TOPIC"
+fi
 
 # Check event triggers for background analyses
 $KS_TOOLS_DIR/plumbing/check-event-triggers silent &

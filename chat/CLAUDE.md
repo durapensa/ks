@@ -9,6 +9,10 @@ This is a personal knowledge system that captures thoughts, connections, and ins
 ## Core Behaviors
 
 - When the user shares ideas, create event entries using the `events` tool
+- When responding to users and you identify patterns or connections worth capturing, prefix with [Claude]:
+  ```bash
+  tools/capture/events connection "topic" "[Claude] Pattern analysis here..."
+  ```
 - Watch for connections between concepts and suggest capturing them
 - Periodically suggest when distillation might be valuable
 - Check `knowledge/.notifications/` at conversation start

@@ -1,11 +1,22 @@
 # Development Status
 
 **Last Updated**: June 10, 2025  
-**Current Phase**: Test suite stabilization complete for fast tests
+**Current Phase**: Implementing unified knowledge graph foundation (Issue #18)
 
 ## Current Focus
 
-### 1. Test Suite Stabilization (Issue #15)
+### 1. Unified Knowledge Graph Implementation (Issue #18)
+**Status**: Phase 1 in progress
+**Completed**:
+- Implemented stream.jsonl separation for Claude conversation captures
+- Added [Claude] prefix detection in events tool
+- Fixed timestamp field consistency (ts everywhere)
+**Next Steps**:
+- Implement dual-write in review-findings (hot.jsonl summary + derived/approved.jsonl full)
+- Add enriched metadata tracking for approved findings
+- Implement rejected findings storage
+
+### 2. Test Suite Stabilization (Issue #15)
 **Status**: Phase 1 complete - all fast tests passing (23/23)
 **Next**: Fix remaining mocked tests (12/19 passing)
 - Find-connections tests need mock response updates

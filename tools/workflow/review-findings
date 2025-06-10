@@ -163,10 +163,10 @@ integrate_finding() {
     local event=$(jq -nc \
         --arg content "$content" \
         --arg type "$event_type" \
-        --arg timestamp "$(ks_timestamp)" \
+        --arg ts "$(ks_timestamp)" \
         --argjson metadata "$metadata" \
         '{
-            timestamp: $timestamp,
+            ts: $ts,
             type: $type,
             content: $content,
             metadata: $metadata
