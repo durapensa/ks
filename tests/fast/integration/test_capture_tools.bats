@@ -24,13 +24,15 @@ setup() {
     source "$KS_ROOT/lib/core.sh"
     ks_ensure_dirs
     
-    # Create test data
-    cat > "$KS_HOT_LOG" << 'EOF'
-{"ts":"2025-01-20T10:00:00Z","type":"thought","topic":"memory","content":"Human memory is associative"}
-{"ts":"2025-01-20T11:00:00Z","type":"thought","topic":"systems","content":"Complex systems have emergent properties"}
-{"ts":"2025-01-21T09:00:00Z","type":"insight","topic":"memory","content":"Memory and time are intertwined"}
-{"ts":"2025-01-21T14:00:00Z","type":"connection","topic":"patterns","content":"Patterns repeat across scales"}
-{"ts":"2025-01-22T08:00:00Z","type":"thought","topic":"knowledge","content":"Knowledge graphs mirror neural networks"}
+    # Create test data with recent timestamps
+    local today=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    local yesterday=$(date -u -d "yesterday" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-1d +%Y-%m-%dT%H:%M:%SZ)
+    cat > "$KS_HOT_LOG" << EOF
+{"ts":"$yesterday","type":"thought","topic":"memory","content":"Human memory is associative"}
+{"ts":"$yesterday","type":"thought","topic":"systems","content":"Complex systems have emergent properties"}
+{"ts":"$today","type":"insight","topic":"memory","content":"Memory and time are intertwined"}
+{"ts":"$today","type":"connection","topic":"patterns","content":"Patterns repeat across scales"}
+{"ts":"$today","type":"thought","topic":"knowledge","content":"Knowledge graphs mirror neural networks"}
 EOF
 }
 
@@ -91,9 +93,10 @@ teardown() {
     # Create older cold file in archive directory
     local old_date=$(date -d "3 days ago" +%Y%m%d 2>/dev/null || date -v-3d +%Y%m%d)
     local cold_file="$KS_ARCHIVE_DIR/cold-$old_date.jsonl"
+    local old_timestamp=$(date -u -d "3 days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-3d +%Y-%m-%dT%H:%M:%SZ)
     
-    cat > "$cold_file" << 'EOF'
-{"ts":"2025-01-19T10:00:00Z","type":"thought","topic":"memory","content":"Old memory thought"}
+    cat > "$cold_file" << EOF
+{"ts":"$old_timestamp","type":"thought","topic":"memory","content":"Old memory thought"}
 EOF
     
     # Search with date range

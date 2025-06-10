@@ -86,11 +86,11 @@ teardown() {
     # Register process with malicious name
     ks_register_background_process "$malicious_name" 12345
     
-    # Check the file was created safely  
-    [ -f "$KS_PROCESS_REGISTRY/active/test_rm_-rf_/-12345.json" ]
+    # Check the file was created safely with sanitized name
+    [ -f "$KS_PROCESS_REGISTRY/active/test_rm_-rf_-12345.json" ]
     
     # Verify the task name was properly escaped in JSON
-    local content=$(cat "$KS_PROCESS_REGISTRY/active/test_rm_-rf_/-12345.json")
+    local content=$(cat "$KS_PROCESS_REGISTRY/active/test_rm_-rf_-12345.json")
     # Should contain escaped quotes in the JSON string
     [[ "$content" == *'"task":'* ]]
     # The dangerous command should be safely contained within JSON string quotes

@@ -1,18 +1,15 @@
 # Development Status
 
-**Last Updated**: June 2025  
-**Current Phase**: Test suite stabilization and analysis tool completion
+**Last Updated**: June 10, 2025  
+**Current Phase**: Test suite stabilization complete for fast tests
 
 ## Current Focus
 
-### 1. Fix Test Suite (Priority: Critical)
-**Status**: 18/33 tests passing after direct sourcing migration
-**Blocker**: Integration tests failing due to tool implementation changes
-**Next Steps**:
-- Update failing integration tests for new tool patterns
-- Create wrapper for mocking `ks_claude()` in analysis tools
-- Implement response caching for E2E tests
-- Verify GitHub Actions workflow
+### 1. Test Suite Stabilization (Issue #15)
+**Status**: Phase 1 complete - all fast tests passing (23/23)
+**Next**: Fix remaining mocked tests (12/19 passing)
+- Find-connections tests need mock response updates
+- Implement E2E response caching to reduce API costs
 
 ### 2. Complete Background Analysis Tools (Issue #16)
 **Status**: Theme analysis functional, 2 tools remaining
@@ -52,7 +49,7 @@
 ### Commands & Debugging
 ```bash
 # Test execution
-./tests/run_fast_tests.sh        # Unit tests (9/9 passing)
+./tests/run_fast_tests.sh        # All fast tests (23/23 passing)
 ./tests/run_ci_tests.sh          # Fast + mocked for CI
 
 # System monitoring  
@@ -76,45 +73,6 @@ tools/workflow/review-findings     # In separate terminal
 - **Analysis Tools**: Pure functions outputting JSON, called by background scheduler
 - **Process Management**: JSON-based state tracking with file locking
 - **Event Triggers**: Automatic after capture, configurable thresholds
-
-## Recent Fixes
-
-### Review-Findings Tool Issues (June 2025)
-- **Issue #17**: Fixed jq parsing errors in pattern analysis
-  - Corrected check-event-triggers bug (`.themes` → `.patterns`)
-  - Standardized all analysis outputs to `{findings: [array]}` format
-- **Workflow Reorganization**: Created `tools/workflow/` directory
-  - Moved review-findings from analyze/ to workflow/
-  - Updated all references throughout codebase
-- **stdin Redirection Fix**: Fixed user input not being read
-  - Added `< /dev/tty` to read commands in nested loops
-  - Added interactive mode check to prevent piped input
-
-## Recent Milestones
-
-### Bash 5.x Modernization (January 2025)
-- Parameter expansion: `${0%/*}` replacing `dirname "$0"` (eliminated ~20 subprocess spawns)
-- Modern conditionals: `[[ ]]` replacing `[ ]` (100+ instances)
-- Here-strings: `jq <<< "$var"` replacing `echo | jq` pipelines
-- Native timestamps: `$EPOCHSECONDS` replacing `$(date +%s)`
-
-### Library Modularization (June 2025)
-- **Architecture**: Split 420-line `.ks-lib` into 6 focused modules
-- **Performance**: Scripts load 50-200 lines vs full library
-- **Migration**: All 12 scripts updated with direct sourcing pattern
-- **Modules**: core.sh (4 functions), events.sh (2), files.sh (1), claude.sh (7), queue.sh (6), process.sh (5)
-
-### Event-Driven Background Analysis
-- **Trigger System**: `check-event-triggers` spawns analysis after configurable event counts
-- **Analysis Queue**: JSON-based queue prevents duplicate analyses
-- **Review Workflow**: Interactive `review-findings` tool with Y/N approval
-- **Deprecated**: Time-based `schedule-analysis-cycles --install-launchd`
-
-### Test Framework Foundation  
-- **Infrastructure**: bats-core with 3-tier architecture (fast/mocked/e2e)
-- **CI Integration**: GitHub Actions workflow for fast + mocked tests
-- **Results**: 9/9 unit tests passing, integration tests need updates
-- **Design**: No Claude API in CI, minimal test datasets, response fixtures
 
 ## Active Issues
 
@@ -141,4 +99,4 @@ tools/workflow/review-findings     # In separate terminal
 
 ---
 
-**System Status**: Event-driven background analysis functional. Library modularization complete. Test suite needs stabilization for safe development iteration.
+**System Status**: Event-driven background analysis functional. Library modularization complete. Fast test suite fully passing - development iteration now safe.

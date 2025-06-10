@@ -19,3 +19,8 @@ export KS_ANALYSIS_QUEUE="$KS_BACKGROUND_DIR/analysis_queue.json"
 
 # Claude model for analysis tools
 export KS_MODEL="${KS_MODEL:-sonnet}"
+
+# Bash 5.x compatibility - provide EPOCHSECONDS if not available
+if [[ -z "${EPOCHSECONDS:-}" ]]; then
+    export EPOCHSECONDS=$(date +%s)
+fi

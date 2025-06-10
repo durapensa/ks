@@ -129,8 +129,8 @@ if ! should_rotate; then
     exit 0
 fi
 
-# Generate archive filename
-ARCHIVE_FILE="${KS_ARCHIVE_DIR}/$(date +%Y-%m-%d-%H%M%S).jsonl"
+# Generate archive filename with "cold-" prefix to match test expectations
+ARCHIVE_FILE="${KS_ARCHIVE_DIR}/cold-$(date +%Y-%m-%d-%H%M%S).jsonl"
 
 # Perform rotation
 echo "Rotating $KS_HOT_LOG to $ARCHIVE_FILE"

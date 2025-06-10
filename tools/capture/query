@@ -71,6 +71,19 @@ fi
 # Use shared file collection function for consistent processing
 ks_collect_files
 
+# Filter files by date if --since was provided
+if [[ -n "$SINCE_FILTER" ]]; then
+    # For date filtering, we need to check each file's content
+    FILTERED_FILES=()
+    for file in "${FILES_TO_PROCESS[@]}"; do
+        # Check if file contains any events after the since date
+        if jq -e --arg since "$SINCE_FILTER" 'select(.ts >= $since) | true' "$file" >/dev/null 2>&1; then
+            FILTERED_FILES+=("$file")
+        fi
+    done
+    FILES_TO_PROCESS=("${FILTERED_FILES[@]}")
+fi
+
 # Perform search with single jq call if files exist
 if [[ ${#FILES_TO_PROCESS[@]} -gt 0 ]]; then
     jq -r --arg search_term "$SEARCH_TERM" "$JQ_FILTER | select(.content | test(\$search_term; \"i\")) | \"\(.ts) [\(.type)/\(.topic)] \(.content)\"" "${FILES_TO_PROCESS[@]}" 2>/dev/null || true

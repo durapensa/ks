@@ -4,27 +4,46 @@
 setup() {
     # Export KS_ROOT for absolute paths
     export KS_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
+    export BATS_TEST_DIRNAME
     
     # Create temporary test environment
     export TEST_KS_ROOT=$(mktemp -d)
-    export KS_HOT_LOG="$TEST_KS_ROOT/hot.jsonl"
-    export KS_STATE_DIR="$TEST_KS_ROOT/.background"
     export KS_MOCK_API=1
     
-    # Create required directories
-    mkdir -p "$KS_STATE_DIR"
-    
-    # Copy test data
-    cp "$BATS_TEST_DIRNAME/fixtures/test_events/connection_dataset.jsonl" "$KS_HOT_LOG"
+    # Override all KS environment variables BEFORE sourcing .ks-env
+    export KS_KNOWLEDGE_DIR="$TEST_KS_ROOT/knowledge"
+    export KS_EVENTS_DIR="$KS_KNOWLEDGE_DIR/events"
+    export KS_HOT_LOG="$KS_EVENTS_DIR/hot.jsonl"
+    export KS_ARCHIVE_DIR="$KS_EVENTS_DIR/archive"
+    export KS_BACKGROUND_DIR="$KS_KNOWLEDGE_DIR/.background"
+    export KS_PROCESS_REGISTRY="$KS_BACKGROUND_DIR/processes"
     
     # Source environment
     source "$KS_ROOT/.ks-env"
     
-    # Override ks_claude function with mock
-    ks_claude() {
-        cat "$BATS_TEST_DIRNAME/fixtures/claude_responses/connections_dataset.json"
-    }
-    export -f ks_claude
+    # Source core library and ensure directories
+    source "$KS_ROOT/lib/core.sh"
+    ks_ensure_dirs
+    
+    # Copy test data
+    cp "$BATS_TEST_DIRNAME/fixtures/test_events/connection_dataset.jsonl" "$KS_HOT_LOG"
+    
+    # Create mock ks_claude command in a temporary bin directory
+    export MOCK_BIN_DIR="$TEST_KS_ROOT/bin"
+    mkdir -p "$MOCK_BIN_DIR"
+    
+    # Create claude mock script (the actual CLI command)
+    cat > "$MOCK_BIN_DIR/claude" << EOF
+#!/usr/bin/env bash
+# Read all input
+input=\$(cat)
+# Return mock response wrapped as Claude CLI would
+echo '{"result": '"\$(cat "$BATS_TEST_DIRNAME/fixtures/claude_responses/connections_dataset.json")"'}'
+EOF
+    chmod +x "$MOCK_BIN_DIR/claude"
+    
+    # Add mock bin to PATH
+    export PATH="$MOCK_BIN_DIR:$PATH"
 }
 
 teardown() {
@@ -33,7 +52,7 @@ teardown() {
 }
 
 @test "find-connections identifies expected connections with mocked Claude" {
-    run "$KS_ROOT/tools/analyze/find-connections" --days 1 --format json
+    run "$KS_ROOT/tools/analyze/find-connections" --days 365 --format json
     [ "$status" -eq 0 ]
     
     # Parse and validate connections
@@ -46,12 +65,12 @@ teardown() {
 }
 
 @test "find-connections human-readable format with mocked Claude" {
-    run "$KS_ROOT/tools/analyze/find-connections" --days 1
+    run "$KS_ROOT/tools/analyze/find-connections" --days 365
     [ "$status" -eq 0 ]
     
     # Check for expected formatting
-    [[ "$output" == *"Connection Analysis"* ]]
-    [[ "$output" == *"Events analyzed:"* ]]
+    [[ "$output" == *"KNOWLEDGE CONNECTIONS ANALYSIS"* ]]
+    [[ "$output" == *"Generated at"* ]]
     [[ "$output" == *"Connected:"* ]]
     [[ "$output" == *"Strength:"* ]]
 }
@@ -70,7 +89,7 @@ teardown() {
         }'
     }
     
-    run "$KS_ROOT/tools/analyze/find-connections" --days 1 --pattern "pattern" --format json
+    run "$KS_ROOT/tools/analyze/find-connections" --days 365 --pattern "pattern" --format json
     [ "$status" -eq 0 ]
     
     # Should find pattern-related connections
@@ -91,7 +110,7 @@ EOF
         echo '{"connections": [], "summary": "No significant connections found between entries"}'
     }
     
-    run "$KS_ROOT/tools/analyze/find-connections" --days 1 --format json
+    run "$KS_ROOT/tools/analyze/find-connections" --days 365 --format json
     [ "$status" -eq 0 ]
     
     # Should return empty connections array
@@ -105,7 +124,7 @@ EOF
     echo '{"ts":"2025-01-01T10:01:00Z","type":"thought","topic":"test","content":"Test 2"}' >> "$KS_HOT_LOG"
     
     # Should skip analysis due to low event count
-    run "$KS_ROOT/tools/analyze/find-connections" --days 1
+    run "$KS_ROOT/tools/analyze/find-connections" --days 365
     [ "$status" -eq 0 ]
     [[ "$output" == *"Skipping analysis"* ]] || [[ "$output" == *"Not enough events"* ]]
 }
@@ -121,7 +140,7 @@ EOF
     }
     
     # Force analysis
-    run "$KS_ROOT/tools/analyze/find-connections" --days 1 --force --format json
+    run "$KS_ROOT/tools/analyze/find-connections" --days 365 --force --format json
     [ "$status" -eq 0 ]
     
     # Should perform analysis
@@ -140,7 +159,7 @@ EOF
         }'
     }
     
-    run "$KS_ROOT/tools/analyze/find-connections" --days 1 --min-strength strong --format json
+    run "$KS_ROOT/tools/analyze/find-connections" --days 365 --min-strength strong --format json
     [ "$status" -eq 0 ]
     
     # Should only show strong connections

@@ -129,15 +129,19 @@ EOF
 }
 
 @test "process cleanup removes stale process files" {
-    # Create old process files
-    local old_active="$KS_PROCESS_REGISTRY/active/old-task-99999.json"
+    # Create old process files with proper start_epoch for cleanup detection
+    local old_active="$KS_PROCESS_REGISTRY/active/stale-process-99999.json"
     local old_completed="$KS_PROCESS_REGISTRY/completed/old-task-88888.json"
+    
+    # Calculate epoch from 35 minutes ago (older than 30 minute threshold)
+    local old_epoch=$((EPOCHSECONDS - 2100))
     
     cat > "$old_active" << EOF
 {
   "pid": 99999,
   "task": "stale-process",
   "start_time": "2025-01-01T10:00:00Z",
+  "start_epoch": $old_epoch,
   "status": "running"
 }
 EOF
@@ -147,14 +151,11 @@ EOF
   "pid": 88888,
   "task": "old-completed",
   "start_time": "2025-01-01T10:00:00Z",
+  "start_epoch": $old_epoch,
   "end_time": "2025-01-01T11:00:00Z",
   "status": "completed"
 }
 EOF
-    
-    # Set old timestamps
-    touch -t $(date -d "30 days ago" +%Y%m%d%H%M 2>/dev/null || date -v-30d +%Y%m%d%H%M) "$old_active"
-    touch -t $(date -d "30 days ago" +%Y%m%d%H%M 2>/dev/null || date -v-30d +%Y%m%d%H%M) "$old_completed"
     
     # Run monitor with cleanup
     run "$KS_ROOT/tools/plumbing/monitor-background-processes" --cleanup
@@ -162,8 +163,8 @@ EOF
     
     # Stale active process should be moved to failed
     [ ! -f "$old_active" ]
-    [ -f "$KS_PROCESS_REGISTRY/failed/old-task-99999.json" ]
+    [ -f "$KS_PROCESS_REGISTRY/failed/stale-process-99999.json" ]
     
-    # Old completed process might be archived or removed
-    # (implementation dependent)
+    # Old completed process stays in completed (only active processes are cleaned)
+    [ -f "$old_completed" ]
 }

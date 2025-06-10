@@ -18,6 +18,10 @@ setup() {
     # Source environment
     source "$KS_ROOT/.ks-env"
     
+    # Source core library to ensure directories
+    source "$KS_ROOT/lib/core.sh"
+    ks_ensure_dirs
+    
     # Create test data
     cat > "$KS_HOT_LOG" << 'EOF'
 {"ts":"2025-01-01T10:00:00Z","type":"thought","topic":"memory","content":"Human memory is associative, not indexed"}
@@ -55,6 +59,9 @@ teardown() {
 }
 
 @test "collect test events" {
+    # Source the files library
+    source "$KS_ROOT/lib/files.sh"
+    
     # Test that ks_collect_files finds our test data
     ks_collect_files
     
