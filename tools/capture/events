@@ -8,9 +8,10 @@ set -euo pipefail
 
 # Source configuration
 source "$(dirname "$0")/../../.ks-env"
+source "$KS_ROOT/.ks-lib"
 
 # Check for background analysis results
-ks_check_background_results
+ks_check_background_results || true
 
 # HOT_LOG path comes from .ks-env
 # Directory creation handled by ks_ensure_dirs in .ks-env

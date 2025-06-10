@@ -4,8 +4,9 @@
 
 set -euo pipefail
 
-# Source environment
+# Source environment and library
 source "$(dirname "$0")/../../.ks-env"
+source "$KS_ROOT/.ks-lib"
 
 # Default configuration
 TIME_WINDOW_DAYS="${TIME_WINDOW_DAYS:-3}"
@@ -84,35 +85,12 @@ if [ ! -s "$input_file" ]; then
     exit 1
 fi
 
-# Define analysis prompt
-prompt="Extract 2-3 key themes from these knowledge events. For each theme, provide:
-1. Theme name (concise)
-2. Brief description (1-2 sentences)
-3. Supporting evidence from the content
-
-Format as JSON with themes array. Focus on patterns and connections rather than isolated thoughts."
-
-# Run analysis and capture result
-result=$(claude -p "$prompt" < "$input_file" 2>/dev/null)
-analysis_status=$?
+# Get analysis from Claude using modular function
+ANALYSIS=$(cat "$input_file" | ks_claude_analyze "$KS_PROMPT_PATTERNS")
 
 rm -f "$input_file"
 
-if [ $analysis_status -ne 0 ]; then
-    echo '{"error": "Analysis failed"}' >&2
-    exit 1
-fi
-
-# Output based on format
-case "$FORMAT" in
-    json)
-        echo "$result"
-        ;;
-    text|*)
-        # Convert JSON to readable text format
-        echo "=== RECURRING THOUGHT PATTERNS ==="
-        echo "Analysis window: last $TIME_WINDOW_DAYS days"
-        echo ""
-        echo "$result" | jq -r '.themes[]? // .[] | "PATTERN: \(.name // .theme)\n\(.description)\n\nEvidence:\n\(.evidence // .supporting_quotes | if type == "array" then join("\n- ") else . end)\n"' 2>/dev/null || echo "$result"
-        ;;
-esac
+# Format output using modular formatter
+ks_format_analysis "$FORMAT" "$ANALYSIS" "Recurring Thought Patterns" \
+    '.patterns[] | "## \(.pattern)\n\n\(.description)\n\n**Occurrences:** \(.occurrences)\n\n### Examples:\n\(.examples | map("- \"\(.)\"") | join("\n"))\n"' \
+    '.patterns[] | "PATTERN: \(.pattern)\n\(.description)\nOccurrences: \(.occurrences)\nExamples:\n\(.examples | map("  - \"\(.)\"") | join("\n"))\n"'

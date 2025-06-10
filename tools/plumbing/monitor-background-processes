@@ -5,6 +5,7 @@ set -euo pipefail
 
 # Source environment
 source "$(dirname "$0")/../../.ks-env"
+source "$KS_ROOT/.ks-lib"
 
 # Check for background analysis results
 ks_check_background_results || true  # Don't fail if no notifications

@@ -1,9 +1,23 @@
 # Development Status & Next Steps
 
-**Last Updated**: January 30, 2025  
-**Current Phase**: Event-driven background analysis with interactive review system
+**Last Updated**: June 10, 2025  
+**Current Phase**: Claude analysis modularization with brevity constraints
 
 ## Major Recent Accomplishments
+
+### Analysis Tool Modularization (June 10, 2025)
+- **Modular Functions**: Added `ks_claude_analyze()` and `ks_format_analysis()` to `.ks-lib`
+- **Brevity Constraints**: Implemented prompt templates with character limits (50 chars for descriptions, 20-30 for concepts)
+- **Code Reduction**: Reduced analysis tool code by ~80% (from ~25 lines to 3-4 lines per tool)
+- **Consistent Error Handling**: Centralized JSON validation and error reporting
+- **Output Formats**: Unified formatting across json/markdown/text outputs
+- **Tools Refactored**: extract-themes, find-connections, identify-recurring-thought-patterns
+
+**Key Benefits**:
+- Concise Claude outputs preventing verbose responses
+- Easy to tune output length centrally via prompt templates
+- Consistent behavior across all analysis tools
+- Simplified maintenance and testing
 
 ### Background Processing System (Functional, needs extended testing)
 - **Process Management**: Full registry with active/completed/failed tracking

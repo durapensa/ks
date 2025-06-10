@@ -7,9 +7,10 @@ set -euo pipefail
 
 # Source configuration
 source "$(dirname "$0")/../../.ks-env"
+source "$KS_ROOT/.ks-lib"
 
 # Check for background analysis results
-ks_check_background_results
+ks_check_background_results || true
 
 # Default values
 DAYS="${1:-7}"
@@ -78,30 +79,10 @@ if [ -z "$CONTENT" ]; then
     exit 0
 fi
 
-# Get analysis from Claude using wrapper function
-ANALYSIS=$(echo "$CONTENT" | ks_claude --model "$KS_MODEL" --print --output-format json "Extract 3-5 key themes from these thoughts. Return JSON: {themes: [{name: string, description: string, frequency: number, supporting_quotes: [string]}]}")
+# Get analysis from Claude using modular function
+ANALYSIS=$(echo "$CONTENT" | ks_claude_analyze "$KS_PROMPT_THEMES")
 
-# Clean up any markdown code blocks if present
-if echo "$ANALYSIS" | grep -q '```json'; then
-    ANALYSIS=$(echo "$ANALYSIS" | sed -n '/```json/,/```/p' | sed '1d;$d')
-fi
-
-# Format output based on requested format
-case "$FORMAT" in
-    json)
-        echo "$ANALYSIS"
-        ;;
-    markdown)
-        echo "# Knowledge Themes Analysis"
-        echo ""
-        echo "_Analysis of events from the last ${DAYS} days_"
-        echo ""
-        echo "$ANALYSIS" | jq -r '.themes[] | "## \(.name)\n\n\(.description)\n\n**Frequency:** \(.frequency)\n\n### Supporting Evidence:\n\(.supporting_quotes | map("- \"\(.)\"") | join("\n"))\n"'
-        ;;
-    text|*)
-        echo "=== KNOWLEDGE THEMES ANALYSIS ==="
-        echo "Events from last $DAYS days"
-        echo ""
-        echo "$ANALYSIS" | jq -r '.themes[] | "THEME: \(.name)\n\(.description)\nFrequency: \(.frequency)\nEvidence:\n\(.supporting_quotes | map("  - \"\(.)\"") | join("\n"))\n"'
-        ;;
-esac
+# Format output using modular formatter
+ks_format_analysis "$FORMAT" "$ANALYSIS" "Knowledge Themes" \
+    '.themes[] | "## \(.name)\n\n\(.description)\n\n**Frequency:** \(.frequency)/10\n\n### Supporting Evidence:\n\(.supporting_quotes | map("- \"\(.)\"") | join("\n"))\n"' \
+    '.themes[] | "THEME: \(.name)\n\(.description)\nFrequency: \(.frequency)/10\nEvidence:\n\(.supporting_quotes | map("  - \"\(.)\"") | join("\n"))\n"'

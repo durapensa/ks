@@ -7,9 +7,10 @@ set -euo pipefail
 
 # Source configuration
 source "$(dirname "$0")/../../.ks-env"
+source "$KS_ROOT/.ks-lib"
 
 # Check for background analysis results
-ks_check_background_results
+ks_check_background_results || true
 
 # Default values
 TOPIC_FILTER=""
@@ -78,30 +79,10 @@ if [ -z "$EVENTS" ]; then
     exit 0
 fi
 
-# Get analysis from Claude using wrapper function
-ANALYSIS=$(echo "$EVENTS" | ks_claude --model "$KS_MODEL" --print --output-format json "Find conceptual connections between these events. Return JSON: {connections: [{concepts: [string], relationship: string, strength: number, evidence: string}]}")
+# Get analysis from Claude using modular function
+ANALYSIS=$(echo "$EVENTS" | ks_claude_analyze "$KS_PROMPT_CONNECTIONS")
 
-# Clean up any markdown code blocks if present
-if echo "$ANALYSIS" | grep -q '```json'; then
-    ANALYSIS=$(echo "$ANALYSIS" | sed -n '/```json/,/```/p' | sed '1d;$d')
-fi
-
-# Format output based on requested format
-case "$FORMAT" in
-    json)
-        echo "$ANALYSIS"
-        ;;
-    markdown)
-        echo "# Knowledge Connections Analysis"
-        echo ""
-        echo "_Analysis of events${TOPIC_FILTER:+ for topic '$TOPIC_FILTER'} from the last ${DAYS} days_"
-        echo ""
-        echo "$ANALYSIS" | jq -r '.connections[] | "## \(.concepts | join(" ↔ "))\n\n**Relationship:** \(.relationship)\n\n**Strength:** \(.strength)/10\n\n**Evidence:** \(.evidence)\n"'
-        ;;
-    text|*)
-        echo "=== KNOWLEDGE CONNECTIONS ANALYSIS ==="
-        echo "${TOPIC_FILTER:+Topic: $TOPIC_FILTER | }Events from last $DAYS days"
-        echo ""
-        echo "$ANALYSIS" | jq -r '.connections[] | "CONCEPTS: \(.concepts | join(" <-> "))\nRELATIONSHIP: \(.relationship)\nSTRENGTH: \(.strength)/10\nEVIDENCE: \(.evidence)\n"'
-        ;;
-esac
+# Format output using modular formatter
+ks_format_analysis "$FORMAT" "$ANALYSIS" "Knowledge Connections" \
+    '.connections[] | "## \(.concepts | join(" ↔ "))\n\n**Relationship:** \(.relationship)\n\n**Strength:** \(.strength)/10\n\n**Evidence:** \(.evidence)\n"' \
+    '.connections[] | "CONCEPTS: \(.concepts | join(" <-> "))\nRELATIONSHIP: \(.relationship)\nSTRENGTH: \(.strength)/10\nEVIDENCE: \(.evidence)\n"'
