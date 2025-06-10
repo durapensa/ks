@@ -24,6 +24,7 @@ check_dependencies() {
     
     # Check for required dependencies
     command -v jq >/dev/null 2>&1 || missing_deps+=("jq")
+    command -v gum >/dev/null 2>&1 || missing_deps+=("gum")
     command -v claude >/dev/null 2>&1 || missing_deps+=("claude")
     command -v python3 >/dev/null 2>&1 || missing_deps+=("python3")
     
@@ -170,6 +171,7 @@ if [[ $KS_CONFIGURED -eq 0 ]]; then
     echo "# Knowledge System configuration" >> "$SHELL_CONFIG"
     echo "export KS_ROOT=\"$KS_ROOT\"" >> "$SHELL_CONFIG"
     echo "alias ks=\"\$KS_ROOT/ks\"" >> "$SHELL_CONFIG"
+    echo "alias ksd=\"\$KS_ROOT/ksd\"" >> "$SHELL_CONFIG"
     echo "✓ Added basic Knowledge System configuration to $SHELL_CONFIG"
 fi
 
@@ -194,6 +196,7 @@ fi
 if [[ $SOURCED -eq 1 ]]; then
     export KS_ROOT
     alias ks="$KS_ROOT/ks"
+    alias ksd="$KS_ROOT/ksd"
     
     # On macOS, prefer GNU tools for better compatibility
     if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then

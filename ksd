@@ -1,0 +1,316 @@
+#!/usr/bin/env bash
+# ksd - Knowledge System Dashboard
+# Run in second terminal for monitoring/review/exploration
+
+set -euo pipefail
+
+# Source environment and libraries
+source "${0%/*}/.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/events.sh"
+source "$KS_ROOT/tools/lib/queue.sh"
+
+# State file for persistence between screens
+STATE_FILE="/tmp/ksd-state-$$"
+trap 'rm -f "$STATE_FILE"' EXIT
+
+# Get dashboard data
+get_dashboard_data() {
+    # Event counts
+    TOTAL_EVENTS=$(ks_count_new_events)
+    
+    # Get trigger state
+    if [[ -f "$KS_BACKGROUND_DIR/.event_trigger_state" ]]; then
+        LAST_THEME_TRIGGER=$(jq -r '.last_theme_trigger // 0' "$KS_BACKGROUND_DIR/.event_trigger_state")
+        LAST_CONNECTION_TRIGGER=$(jq -r '.last_connection_trigger // 0' "$KS_BACKGROUND_DIR/.event_trigger_state")
+        LAST_PATTERN_TRIGGER=$(jq -r '.last_pattern_trigger // 0' "$KS_BACKGROUND_DIR/.event_trigger_state")
+    else
+        LAST_THEME_TRIGGER=0
+        LAST_CONNECTION_TRIGGER=0  
+        LAST_PATTERN_TRIGGER=0
+    fi
+    
+    # Calculate events until next triggers
+    THEME_THRESHOLD="${KS_EVENT_THRESHOLD_THEMES:-10}"
+    CONNECTION_THRESHOLD="${KS_EVENT_THRESHOLD_CONNECTIONS:-20}"
+    PATTERN_THRESHOLD="${KS_EVENT_THRESHOLD_PATTERNS:-30}"
+    
+    EVENTS_SINCE_THEME=$((TOTAL_EVENTS - LAST_THEME_TRIGGER))
+    EVENTS_SINCE_CONNECTION=$((TOTAL_EVENTS - LAST_CONNECTION_TRIGGER))
+    EVENTS_SINCE_PATTERN=$((TOTAL_EVENTS - LAST_PATTERN_TRIGGER))
+    
+    EVENTS_UNTIL_THEME=$((THEME_THRESHOLD - EVENTS_SINCE_THEME))
+    EVENTS_UNTIL_CONNECTION=$((CONNECTION_THRESHOLD - EVENTS_SINCE_CONNECTION))
+    EVENTS_UNTIL_PATTERN=$((PATTERN_THRESHOLD - EVENTS_SINCE_PATTERN))
+    
+    # Pending analyses
+    PENDING_ANALYSES=$(ks_queue_list_pending)
+    PENDING_COUNT=0
+    if [[ "$PENDING_ANALYSES" != "[]" ]]; then
+        PENDING_COUNT=$(echo "$PENDING_ANALYSES" | jq 'length')
+    fi
+    
+    # Active processes
+    ACTIVE_PROCESSES=0
+    if [[ -d "$KS_PROCESS_REGISTRY/active" ]]; then
+        ACTIVE_PROCESSES=$(find "$KS_PROCESS_REGISTRY/active" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
+    fi
+    
+    # Get last update time
+    LAST_UPDATE=$(date '+%H:%M:%S')
+}
+
+# Build compact display for 80x22 terminal
+build_compact_display() {
+    # Title (centered in 80 chars)
+    local title="KNOWLEDGE SYSTEM DASHBOARD"
+    local padding=$(( (80 - ${#title}) / 2 ))
+    printf "%*s%s%*s\n" $padding "" "$title" $padding ""
+    gum style --faint "$(printf '═%.0s' {1..80})"
+    
+    # Status line
+    local events_styled=$(gum style --foreground 212 "$TOTAL_EVENTS")
+    local reviews_styled=$(if [[ $PENDING_COUNT -gt 0 ]]; then gum style --foreground 214 "$PENDING_COUNT"; else echo "0"; fi)
+    echo "Events: $events_styled | Reviews: $reviews_styled | Active: $ACTIVE_PROCESSES | Updated: $LAST_UPDATE"
+    
+    # Separator
+    gum style --faint "$(printf '─%.0s' {1..80})"
+    
+    # Analysis triggers (compact format)
+    echo "ANALYSIS TRIGGERS:"
+    local theme_status=$(if [[ $EVENTS_UNTIL_THEME -le 0 ]]; then gum style --foreground 212 "Ready"; else echo "$EVENTS_UNTIL_THEME to go"; fi)
+    local conn_status=$(if [[ $EVENTS_UNTIL_CONNECTION -le 0 ]]; then gum style --foreground 212 "Ready"; else echo "$EVENTS_UNTIL_CONNECTION to go"; fi)
+    local pattern_status=$(if [[ $EVENTS_UNTIL_PATTERN -le 0 ]]; then gum style --foreground 212 "Ready"; else echo "$EVENTS_UNTIL_PATTERN to go"; fi)
+    echo "  Theme: $theme_status | Connections: $conn_status | Patterns: $pattern_status"
+    
+    # Pending reviews (if any)
+    if [[ $PENDING_COUNT -gt 0 ]]; then
+        gum style --faint "$(printf '─%.0s' {1..80})"
+        echo "PENDING REVIEWS:"
+        echo "$PENDING_ANALYSES" | jq -r '.[] | "  \(.type) - \(.value.completed_at)"' | head -3
+        if [[ $PENDING_COUNT -gt 3 ]]; then
+            echo "  ... and $((PENDING_COUNT - 3)) more"
+        fi
+    fi
+}
+
+# Build menu items with shortcuts
+build_menu_items() {
+    local items=()
+    
+    if [[ $PENDING_COUNT -gt 0 ]]; then
+        items+=("[R] Review Findings ($PENDING_COUNT)")
+    else
+        items+=("[R] Review Findings")
+    fi
+    
+    items+=("[S] Search")
+    items+=("[C] Capture")
+    items+=("[A] Analytics")
+    items+=("[T] Triggers")
+    items+=("[P] Processes")
+    items+=("[F] Refresh")
+    items+=("[Q] Quit")
+    
+    printf '%s\n' "${items[@]}"
+}
+
+# Handle direct keyboard shortcuts
+handle_shortcut() {
+    local key="$1"
+    
+    case "${key,,}" in  # Convert to lowercase
+        'r')
+            clear
+            "$KS_ROOT/tools/workflow/review-findings"
+            echo -e "\nPress Enter to return..."
+            read -r
+            ;;
+        's')
+            clear
+            echo "Search term (Enter for all):"
+            read -r search_term
+            "$KS_ROOT/tools/capture/query" $search_term
+            echo -e "\nPress Enter to return..."
+            read -r
+            ;;
+        'c')
+            clear
+            "$KS_ROOT/tools/capture/events"
+            echo -e "\nPress Enter to return..."
+            read -r
+            ;;
+        'a')
+            clear
+            show_analytics
+            echo -e "\nPress Enter to return..."
+            read -r
+            ;;
+        't')
+            clear
+            "$KS_ROOT/tools/plumbing/check-event-triggers" verbose
+            echo -e "\nPress Enter to return..."
+            read -r
+            ;;
+        'p')
+            clear
+            "$KS_ROOT/tools/plumbing/monitor-background-processes" --status
+            echo -e "\nPress Enter to return..."
+            read -r
+            ;;
+        'f')
+            return 0  # Refresh
+            ;;
+        'q')
+            clear
+            exit 0
+            ;;
+        *)
+            return 1  # Unknown key
+            ;;
+    esac
+}
+
+# Show analytics
+show_analytics() {
+    echo "KNOWLEDGE SYSTEM ANALYTICS"
+    gum style --faint "$(printf '─%.0s' {1..50})"
+    echo ""
+    
+    echo "Total Events: $TOTAL_EVENTS"
+    echo ""
+    
+    # Event type breakdown
+    echo "Event Types:"
+    jq -r '.type' "$KS_HOT_LOG" 2>/dev/null | sort | uniq -c | sort -rn | while read count type; do
+        printf "  %-12s %s\n" "$type" "$count"
+    done | head -5
+    
+    echo ""
+    echo "Recent (7d): $(jq -r --arg date "$(date -d "7 days ago" +%Y-%m-%d 2>/dev/null || gdate -d "7 days ago" +%Y-%m-%d)" '.timestamp | select(. > $date)' "$KS_HOT_LOG" 2>/dev/null | wc -l | tr -d ' ') events"
+}
+
+# Non-interactive status mode
+status_mode() {
+    get_dashboard_data
+    
+    echo "Knowledge System Status"
+    echo "────────────────────────"
+    echo "Captured Events: $TOTAL_EVENTS"
+    echo "Pending Reviews: $PENDING_COUNT"
+    echo "Active Analyses: $ACTIVE_PROCESSES"
+    echo ""
+    echo "Analysis Triggers:"
+    echo "  Theme: $([ $EVENTS_UNTIL_THEME -le 0 ] && echo "Ready" || echo "$EVENTS_UNTIL_THEME to go")"
+    echo "  Connections: $([ $EVENTS_UNTIL_CONNECTION -le 0 ] && echo "Ready" || echo "$EVENTS_UNTIL_CONNECTION to go")"
+    echo "  Patterns: $([ $EVENTS_UNTIL_PATTERN -le 0 ] && echo "Ready" || echo "$EVENTS_UNTIL_PATTERN to go")"
+    
+    if [[ $PENDING_COUNT -gt 0 ]]; then
+        echo ""
+        echo "Pending Reviews:"
+        echo "$PENDING_ANALYSES" | jq -r '.[] | "  \(.type): \(.value.completed_at)"'
+    fi
+}
+
+# Main dashboard loop
+main() {
+    # Check if running interactively
+    if [ ! -t 0 ] || [ ! -t 1 ]; then
+        echo "Error: ksd requires an interactive terminal." >&2
+        echo "For non-interactive use, try: ksd --status" >&2
+        exit 1
+    fi
+    
+    # Initial data load
+    get_dashboard_data
+    
+    while true; do
+        # Clear and build display
+        clear
+        build_compact_display
+        
+        # Menu section
+        gum style --faint "$(printf '─%.0s' {1..80})"
+        echo "ACTIONS:"
+        
+        # Display menu options compactly
+        if [[ $PENDING_COUNT -gt 0 ]]; then
+            echo "  [R] Review ($PENDING_COUNT)  [S] Search      [C] Capture     [A] Analytics"
+        else
+            echo "  [R] Review        [S] Search      [C] Capture     [A] Analytics"
+        fi
+        echo "  [T] Triggers      [P] Processes   [F] Refresh     [Q] Quit"
+        echo ""
+        echo -n "Select action (auto-refresh in 30s): "
+        
+        # Wait for key with timeout for auto-refresh
+        if read -r -s -n 1 -t 30 key; then
+            # Try direct shortcut first
+            if handle_shortcut "$key"; then
+                get_dashboard_data  # Refresh data after action
+                continue
+            fi
+            
+            # If not a shortcut, show menu
+            clear
+            build_compact_display
+            gum style --faint "$(printf '─%.0s' {1..80})"
+            selection=$(build_menu_items | gum choose --height 10)
+            
+            # Extract the action from selection
+            case "$selection" in
+                *"Review"*) handle_shortcut 'r' ;;
+                *"Search"*) handle_shortcut 's' ;;
+                *"Capture"*) handle_shortcut 'c' ;;
+                *"Analytics"*) handle_shortcut 'a' ;;
+                *"Triggers"*) handle_shortcut 't' ;;
+                *"Processes"*) handle_shortcut 'p' ;;
+                *"Refresh"*) handle_shortcut 'f' ;;
+                *"Quit"*) handle_shortcut 'q' ;;
+            esac
+        fi
+        
+        # Refresh data
+        get_dashboard_data
+    done
+}
+
+# Parse arguments
+case "${1:-}" in
+    --status|-s)
+        status_mode
+        ;;
+    --help|-h)
+        echo "Usage: ksd [options]"
+        echo ""
+        echo "Interactive dashboard for the Knowledge System"
+        echo "Designed for 80x22 terminals (tmux-friendly)"
+        echo ""
+        echo "Options:"
+        echo "  --status, -s    Show current status (non-interactive)"
+        echo "  --help, -h      Show this help message"
+        echo ""
+        echo "Keyboard Shortcuts:"
+        echo "  R - Review pending findings"
+        echo "  S - Search knowledge base"
+        echo "  C - Capture new event"
+        echo "  A - View analytics"
+        echo "  T - Check analysis triggers"
+        echo "  P - Monitor background processes"
+        echo "  F - Refresh display"
+        echo "  Q - Quit"
+        echo ""
+        echo "Info:"
+        echo "  - Analysis triggers run automatically after event thresholds"
+        echo "  - Pending reviews require action in review-findings tool"
+        echo "  - Dashboard auto-refreshes every 30 seconds"
+        ;;
+    "")
+        main
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        echo "Try 'ksd --help' for usage information" >&2
+        exit 1
+        ;;
+esac

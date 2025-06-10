@@ -14,6 +14,7 @@ Personal knowledge system with event-sourced architecture for capturing thoughts
 
 # Daily usage
 ks                                   # Enter conversational capture mode
+ksd                                  # Open dashboard in second terminal (optional)
 tools/capture/query "search term"    # Search existing knowledge
 
 # Development workflow
@@ -25,6 +26,7 @@ tools/plumbing/monitor-background-processes --status  # Check system health
 ## Core Usage Patterns
 
 - **`ks`** command - Enter conversational knowledge capture mode (configured via setup.sh)
+- **`ksd`** command - Dashboard for monitoring system status and pending reviews (optional)
 - **`tools/`** - Internal processing tools for knowledge analysis
 - **Background Analysis** - Automatic theme/connection extraction after event thresholds
 - **Review Workflow** - `tools/workflow/review-findings` for approving insights

@@ -25,6 +25,7 @@ source setup.sh
 - `bash` 5.x+ - Modern bash features for performance and safety (required)
 - `jq` - JSON processing (required)
 - `claude` - Claude CLI (required) 
+- `gum` - Beautiful TUI components for dashboard (required for ksd)
 - `python3` - For JSONL migration utilities (typically pre-installed)
 - `flock` - File locking for log rotation (optional but recommended)
 - GNU coreutils - For consistent date/stat behavior across platforms
@@ -35,7 +36,7 @@ source setup.sh
 - Configures PATH to prefer GNU tools, ensuring consistent behavior across platforms
 
 **Manual Installation:**
-- macOS: `brew install bash jq coreutils util-linux` (then install Claude CLI separately)
+- macOS: `brew install bash jq gum coreutils util-linux` (then install Claude CLI separately)
 - Linux: Use your distribution's package manager (ensure bash 5.x+)
 
 ## Configuration
@@ -59,6 +60,20 @@ During conversation, Claude will automatically:
 - Query past knowledge when relevant
 - Analyze patterns and connections
 - Build your knowledge graph over time
+
+### Dashboard (Optional)
+```bash
+ksd                     # Open knowledge system dashboard
+```
+
+The dashboard provides:
+- Real-time system status and event counts
+- Pending analysis notifications
+- Quick access to review findings
+- Navigation to common tools
+- Background process monitoring
+
+Run in a second terminal while using `ks` for a complete overview of your knowledge system activity.
 
 ## Directory Structure
 
