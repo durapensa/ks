@@ -1,0 +1,69 @@
+name: Knowledge System Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  fast-tests:
+    name: Fast Tests (No Claude API)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+    
+    - name: Setup knowledge system
+      run: ./setup.sh
+    
+    - name: Install test framework
+      run: ./tests/setup_test_framework.sh
+    
+    - name: Run fast test suite
+      run: ./tests/run_fast_tests.sh
+      
+  mocked-tests:
+    name: Mocked Tests (Fake Claude API)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+    
+    - name: Setup knowledge system
+      run: ./setup.sh
+    
+    - name: Install test framework
+      run: ./tests/setup_test_framework.sh
+    
+    - name: Run mocked analysis tests
+      run: ./tests/run_mocked_tests.sh
+      
+  macos-compatibility:
+    name: macOS Compatibility Tests
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup knowledge system
+      run: ./setup.sh
+    
+    - name: Install test framework
+      run: ./tests/setup_test_framework.sh
+    
+    - name: Run CI test suite
+      run: ./tests/run_ci_tests.sh
+      
+  # Note: No real Claude API tests in CI
+  # Those run manually or in nightly builds with secrets

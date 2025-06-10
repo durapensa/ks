@@ -1,0 +1,24 @@
+{
+  "themes": [
+    {
+      "name": "Memory System Architecture",
+      "description": "Comparison of biological vs computational memory models",
+      "frequency": 3,
+      "supporting_quotes": [
+        "Human memory is associative, not indexed",
+        "Computer memory is linear and addressable",
+        "Biological vs digital memory architectures"
+      ]
+    },
+    {
+      "name": "Temporal Knowledge Dynamics",
+      "description": "Time as constitutive element of knowledge formation",
+      "frequency": 2,
+      "supporting_quotes": [
+        "Event sourcing mirrors episodic memory",
+        "Time shapes knowledge, not just stores it"
+      ]
+    }
+  ],
+  "summary": "The dataset reveals two primary themes: contrasting memory architectures between biological and digital systems, and the temporal nature of knowledge formation."
+}
