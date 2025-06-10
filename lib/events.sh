@@ -24,8 +24,8 @@ ks_count_new_events() {
     local since="${1:-}"
     local count=0
     
-    if [ -f "$KS_HOT_LOG" ]; then
-        if [ -n "$since" ]; then
+    if [[ -f "$KS_HOT_LOG" ]]; then
+        if [[ -n "$since" ]]; then
             # Count events newer than timestamp
             count=$(awk -F'"timestamp":"' -v since="$since" '
                 $2 {

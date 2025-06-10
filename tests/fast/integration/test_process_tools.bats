@@ -20,6 +20,10 @@ setup() {
     # Source environment after overrides
     source "$KS_ROOT/.ks-env"
     
+    # Source required libraries
+    source "$KS_ROOT/lib/core.sh"
+    source "$KS_ROOT/tools/lib/process.sh"   # Process library is in tools/lib/
+    
     # Create required directories
     mkdir -p "$KS_STATE_DIR/processes/"{active,completed,failed}
     mkdir -p "$KS_NOTIFICATION_DIR"

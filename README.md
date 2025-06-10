@@ -22,11 +22,12 @@ source setup.sh
 
 ### Dependencies
 
+- `bash` 5.x+ - Modern bash features for performance and safety (required)
 - `jq` - JSON processing (required)
 - `claude` - Claude CLI (required) 
 - `python3` - For JSONL migration utilities (typically pre-installed)
 - `flock` - File locking for log rotation (optional but recommended)
-- Standard Unix tools: `bash`, `grep`, `find`, `date`
+- GNU coreutils - For consistent date/stat behavior across platforms
 
 **Automatic Installation (macOS):**
 - On macOS with Homebrew, `setup.sh` will detect missing dependencies and offer to install them automatically
@@ -34,8 +35,8 @@ source setup.sh
 - Configures PATH to prefer GNU tools, ensuring consistent behavior across platforms
 
 **Manual Installation:**
-- macOS: `brew install jq coreutils util-linux` (then install Claude CLI separately)
-- Linux: Use your distribution's package manager
+- macOS: `brew install bash jq coreutils util-linux` (then install Claude CLI separately)
+- Linux: Use your distribution's package manager (ensure bash 5.x+)
 
 ## Configuration
 

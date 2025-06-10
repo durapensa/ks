@@ -19,6 +19,14 @@ setup() {
     
     # Source the environment (will use our overrides)
     source "$KS_ROOT/.ks-env"
+    
+    # Source required libraries for tests
+    source "$KS_ROOT/lib/core.sh"      # For ks_validate_days, ks_ensure_dirs
+    source "$KS_ROOT/lib/files.sh"     # For ks_collect_files
+    
+    # Process and queue are in tools/lib/, source them directly
+    source "$KS_ROOT/tools/lib/process.sh"   # For process management functions
+    source "$KS_ROOT/tools/lib/queue.sh"     # For ks_check_background_results
 }
 
 teardown() {

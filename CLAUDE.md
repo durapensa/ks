@@ -50,10 +50,10 @@ Scripts use modular libraries to load only needed functions:
 ### Usage Example
 ```bash
 #!/usr/bin/env bash
-source "$(dirname "$0")/../../.ks-env"
-ks_source_lib core      # Essential utilities
-ks_source_lib files     # If processing files
-ks_source_lib claude    # If using Claude
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"         # Essential utilities
+source "$KS_ROOT/lib/files.sh"        # If processing files  
+source "$KS_ROOT/tools/lib/claude.sh" # If using Claude
 ```
 
 Scripts load ~50-200 lines instead of the old 420-line monolithic library.

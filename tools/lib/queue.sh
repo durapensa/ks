@@ -9,7 +9,7 @@ ks_queue_init() {
     # Initialize analysis queue if it doesn't exist
     # Usage: ks_queue_init
     
-    if [ ! -f "$KS_ANALYSIS_QUEUE" ]; then
+    if [[ ! -f "$KS_ANALYSIS_QUEUE" ]]; then
         echo '{"analyses": {}}' > "$KS_ANALYSIS_QUEUE"
     fi
 }
@@ -24,7 +24,7 @@ ks_queue_check() {
     
     local status=$(jq -r ".analyses.\"$analysis_type\".status // \"none\"" "$KS_ANALYSIS_QUEUE")
     
-    if [ "$status" = "pending_review" ]; then
+    if [[ "$status" == "pending_review" ]]; then
         return 1  # Cannot run - has pending review
     fi
     return 0  # Clear to run
@@ -83,7 +83,7 @@ ks_check_background_results() {
     # Check for pending analyses
     local pending=$(ks_queue_list_pending)
     
-    if [ "$pending" = "[]" ]; then
+    if [[ "$pending" == "[]" ]]; then
         return 1
     fi
     
@@ -92,11 +92,11 @@ ks_check_background_results() {
     echo "=== Background Analyses Ready for Review ==="
     echo ""
     
-    local count=$(echo "$pending" | jq -r 'length')
+    local count=$(jq -r 'length' <<< "$pending")
     echo "You have $count analysis/analyses pending review:"
     echo ""
     
-    echo "$pending" | jq -r '.[] | "  • \(.type) - completed at \(.value.completed_at)"'
+    jq -r '.[] | "  • \(.type) - completed at \(.value.completed_at)"' <<< "$pending"
     
     echo ""
     echo "Run 'tools/analyze/review-findings' in a separate terminal to review."

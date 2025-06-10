@@ -6,11 +6,11 @@
 set -euo pipefail
 
 # Source configuration and modular libraries
-source "$(dirname "$0")/../../.ks-env"
-ks_source_lib core      # For ks_validate_days, ks_timestamp (used by queue)
-ks_source_lib files     # For ks_collect_files
-ks_source_lib queue     # For ks_check_background_results
-ks_source_lib claude    # For ks_claude_analyze, ks_format_analysis
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"      # For ks_validate_days, ks_timestamp (used by queue)
+source "$KS_ROOT/lib/files.sh"     # For ks_collect_files
+source "$KS_ROOT/tools/lib/queue.sh"     # For ks_check_background_results
+source "$KS_ROOT/tools/lib/claude.sh"    # For ks_claude_analyze, ks_format_analysis
 
 # Check for background analysis results
 ks_check_background_results || true
@@ -62,7 +62,7 @@ SINCE_DATE=$(date -u -d "${DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
 
 # Build filter
 FILTER="."
-if [ -n "$TOPIC_FILTER" ]; then
+if [[ -n "$TOPIC_FILTER" ]]; then
     FILTER="$FILTER | select(.topic == \"$TOPIC_FILTER\")"
 fi
 
@@ -73,17 +73,17 @@ EVENTS=""
 ks_collect_files
 
 # Process all files in single jq call if any files exist
-if [ ${#FILES_TO_PROCESS[@]} -gt 0 ]; then
-    EVENTS=$(cat "${FILES_TO_PROCESS[@]}" | jq -r --arg since_date "$SINCE_DATE" "$FILTER | select(.ts >= \$since_date) | \"\(.topic): \(.content)\"" 2>/dev/null | grep -v '^$' || true)
+if [[ ${#FILES_TO_PROCESS[@]} -gt 0 ]]; then
+    EVENTS=$(jq -r --arg since_date "$SINCE_DATE" "$FILTER | select(.ts >= \$since_date) | \"\(.topic): \(.content)\"" "${FILES_TO_PROCESS[@]}" 2>/dev/null | grep -v '^$' || true)
 fi
 
-if [ -z "$EVENTS" ]; then
+if [[ -z "$EVENTS" ]]; then
     echo "No events found${TOPIC_FILTER:+ for topic '$TOPIC_FILTER'} in the last $DAYS days"
     exit 0
 fi
 
 # Get analysis from Claude using modular function
-ANALYSIS=$(echo "$EVENTS" | ks_claude_analyze "$KS_PROMPT_CONNECTIONS")
+ANALYSIS=$(ks_claude_analyze "$KS_PROMPT_CONNECTIONS" <<< "$EVENTS")
 
 # Format output using modular formatter
 ks_format_analysis "$FORMAT" "$ANALYSIS" "Knowledge Connections" \

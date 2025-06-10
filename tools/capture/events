@@ -7,19 +7,18 @@
 set -euo pipefail
 
 # Source configuration and modular libraries
-source "$(dirname "$0")/../../.ks-env"
-ks_source_lib core      # For ks_timestamp
-ks_source_lib events    # For ks_validate_event_type
-ks_source_lib queue     # For ks_check_background_results
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"      # For ks_timestamp
+source "$KS_ROOT/lib/events.sh"    # For ks_validate_event_type
 
-# Check for background analysis results
-ks_check_background_results || true
+# Background results check removed to avoid interrupting capture flow
+# Use 'tools/analyze/review-findings' to review completed analyses
 
 # HOT_LOG path comes from .ks-env
 # Directory creation handled by ks_ensure_dirs in .ks-env
 
 # Parse arguments
-if [ $# -lt 2 ]; then
+if [[ $# -lt 2 ]]; then
     echo "Usage: ke <type> <topic> [content]" >&2
     echo "       echo 'content' | ke <type> <topic>" >&2
     echo "" >&2
@@ -35,7 +34,7 @@ CONTENT=""
 ks_validate_event_type "$TYPE" || exit 1
 
 # Get content from argument or stdin
-if [ $# -ge 3 ]; then
+if [[ $# -ge 3 ]]; then
     CONTENT="$3"
 else
     CONTENT=$(cat)

@@ -27,6 +27,27 @@ check_dependencies() {
     command -v claude >/dev/null 2>&1 || missing_deps+=("claude")
     command -v python3 >/dev/null 2>&1 || missing_deps+=("python3")
     
+    # Check for modern bash (5.x+)
+    # First check if brew's bash is installed (even if not in PATH yet)
+    local brew_bash_found=0
+    if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then
+        local brew_prefix=$(brew --prefix)
+        if [[ -x "$brew_prefix/bin/bash" ]]; then
+            local brew_bash_version=$("$brew_prefix/bin/bash" --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+            if [[ "$brew_bash_version" > "4.99" ]]; then
+                brew_bash_found=1
+            fi
+        fi
+    fi
+    
+    # If brew bash not found, check current bash in PATH
+    if [[ $brew_bash_found -eq 0 ]]; then
+        local bash_version=$(bash --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+        if [[ ! "$bash_version" > "4.99" ]]; then
+            missing_deps+=("bash")
+        fi
+    fi
+    
     # Check for optional but recommended dependencies
     command -v flock >/dev/null 2>&1 || missing_deps+=("util-linux")
     
@@ -37,7 +58,7 @@ check_dependencies() {
         fi
     fi
     
-    if [ ${#missing_deps[@]} -gt 0 ]; then
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
         echo ""
         echo "Missing dependencies: ${missing_deps[*]}"
         
@@ -71,6 +92,15 @@ check_dependencies() {
                     done
                     
                     echo "✓ Dependencies installed"
+                    
+                    # Check if bash was installed and provide guidance
+                    for dep in "${missing_deps[@]}"; do
+                        if [[ "$dep" == "bash" ]]; then
+                            echo ""
+                            echo "Note: Bash 5.x has been installed via Homebrew."
+                            echo "To use it, reload your shell configuration or start a new terminal."
+                        fi
+                    done
                 else
                     echo "Skipping dependency installation"
                 fi
@@ -135,7 +165,7 @@ if grep -q "coreutils/libexec/gnubin" "$SHELL_CONFIG" 2>/dev/null; then
 fi
 
 # Add basic KS configuration if not present
-if [ $KS_CONFIGURED -eq 0 ]; then
+if [[ $KS_CONFIGURED -eq 0 ]]; then
     echo "" >> "$SHELL_CONFIG"
     echo "# Knowledge System configuration" >> "$SHELL_CONFIG"
     echo "export KS_ROOT=\"$KS_ROOT\"" >> "$SHELL_CONFIG"
@@ -144,7 +174,7 @@ if [ $KS_CONFIGURED -eq 0 ]; then
 fi
 
 # Add GNU tools PATH configuration on macOS if not present
-if [[ "$OSTYPE" == "darwin"* ]] && [ $GNU_TOOLS_CONFIGURED -eq 0 ]; then
+if [[ "$OSTYPE" == "darwin"* && $GNU_TOOLS_CONFIGURED -eq 0 ]]; then
     echo "" >> "$SHELL_CONFIG"
     echo "# Prefer GNU tools on macOS for Knowledge System compatibility" >> "$SHELL_CONFIG"
     echo "if command -v brew >/dev/null 2>&1; then" >> "$SHELL_CONFIG"
@@ -156,12 +186,12 @@ if [[ "$OSTYPE" == "darwin"* ]] && [ $GNU_TOOLS_CONFIGURED -eq 0 ]; then
     echo "✓ Added GNU tools PATH configuration to $SHELL_CONFIG"
 fi
 
-if [ $KS_CONFIGURED -eq 1 ] && [ $GNU_TOOLS_CONFIGURED -eq 1 ]; then
+if [[ $KS_CONFIGURED -eq 1 && $GNU_TOOLS_CONFIGURED -eq 1 ]]; then
     echo "Knowledge System fully configured in $SHELL_CONFIG"
 fi
 
 # If being sourced, also set up the current shell
-if [ $SOURCED -eq 1 ]; then
+if [[ $SOURCED -eq 1 ]]; then
     export KS_ROOT
     alias ks="$KS_ROOT/ks"
     

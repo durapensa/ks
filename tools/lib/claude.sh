@@ -11,9 +11,9 @@ ks_claude() {
     result=$(claude "$@")
     
     # Check if it's a wrapped result
-    if echo "$result" | jq -e '.result' >/dev/null 2>&1; then
+    if jq -e '.result' >/dev/null 2>&1 <<< "$result"; then
         # Extract the actual result content
-        echo "$result" | jq -r '.result'
+        jq -r '.result' <<< "$result"
     else
         # Return as-is if not wrapped
         echo "$result"
@@ -29,7 +29,7 @@ ks_claude_analyze() {
     local prompt="$1"
     local input="${2:-$(cat)}"  # Use stdin if no second argument
     
-    if [ -z "$prompt" ]; then
+    if [[ -z "$prompt" ]]; then
         echo "Error: ks_claude_analyze requires a prompt" >&2
         return 1
     fi
@@ -39,18 +39,18 @@ ks_claude_analyze() {
     result=$(echo "$input" | ks_claude --model "$KS_MODEL" --print --output-format json "$prompt")
     local exit_code=$?
     
-    if [ $exit_code -ne 0 ]; then
+    if [[ "$exit_code" -ne 0 ]]; then
         echo "Error: Claude invocation failed" >&2
-        return $exit_code
+        return "$exit_code"
     fi
     
     # Clean up markdown code blocks if present
-    if echo "$result" | grep -q '```json'; then
-        result=$(echo "$result" | sed -n '/```json/,/```/p' | sed '1d;$d')
+    if grep -q '```json' <<< "$result"; then
+        result=$(sed -n '/```json/,/```/p' <<< "$result" | sed '1d;$d')
     fi
     
     # Validate JSON structure
-    if ! echo "$result" | jq . >/dev/null 2>&1; then
+    if ! jq . >/dev/null 2>&1 <<< "$result"; then
         echo "Error: Invalid JSON response from Claude" >&2
         echo "Response was: $result" >&2
         return 1
@@ -79,16 +79,16 @@ ks_format_analysis() {
             echo ""
             echo "_Generated at $(date -u '+%Y-%m-%d %H:%M UTC')_"
             echo ""
-            echo "$json_data" | jq -r "$jq_markdown"
+            jq -r "$jq_markdown" <<< "$json_data"
             ;;
         text|*)
-            # Use tr for uppercase conversion (more portable)
-            echo "=== $(echo "$title" | tr '[:lower:]' '[:upper:]') ANALYSIS ==="
+            # Use bash parameter expansion for uppercase conversion
+            echo "=== ${title^^} ANALYSIS ==="
             echo "Generated at $(date -u '+%Y-%m-%d %H:%M UTC')"
             echo ""
             # Check for null before trying to iterate
-            if echo "$json_data" | jq -e . >/dev/null 2>&1; then
-                echo "$json_data" | jq -r "$jq_text" 2>/dev/null || echo "No data to display"
+            if jq -e . >/dev/null 2>&1 <<< "$json_data"; then
+                jq -r "$jq_text" 2>/dev/null <<< "$json_data" || echo "No data to display"
             else
                 echo "No data to display"
             fi

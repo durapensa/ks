@@ -6,10 +6,10 @@
 set -euo pipefail
 
 # Source configuration and modular libraries
-source "$(dirname "$0")/../../.ks-env"
-ks_source_lib core      # For ks_timestamp (used by queue)
-ks_source_lib files     # For ks_collect_files
-ks_source_lib queue     # For ks_check_background_results
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"      # For ks_timestamp (used by queue)
+source "$KS_ROOT/lib/files.sh"     # For ks_collect_files
+source "$KS_ROOT/tools/lib/queue.sh"     # For ks_check_background_results
 
 # Check for background analysis results
 ks_check_background_results || true
@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            if [ -z "$SEARCH_TERM" ]; then
+            if [[ -z "$SEARCH_TERM" ]]; then
                 SEARCH_TERM="$1"
             else
                 echo "Unknown option: $1" >&2
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ -z "$SEARCH_TERM" ]; then
+if [[ -z "$SEARCH_TERM" ]]; then
     echo "Usage: kq <search_term> [--type <type>] [--topic <topic>] [--since <date>]" >&2
     exit 1
 fi
@@ -56,15 +56,15 @@ fi
 # Build jq filter
 JQ_FILTER="."
 
-if [ -n "$TYPE_FILTER" ]; then
+if [[ -n "$TYPE_FILTER" ]]; then
     JQ_FILTER="$JQ_FILTER | select(.type == \"$TYPE_FILTER\")"
 fi
 
-if [ -n "$TOPIC_FILTER" ]; then
+if [[ -n "$TOPIC_FILTER" ]]; then
     JQ_FILTER="$JQ_FILTER | select(.topic == \"$TOPIC_FILTER\")"
 fi
 
-if [ -n "$SINCE_FILTER" ]; then
+if [[ -n "$SINCE_FILTER" ]]; then
     JQ_FILTER="$JQ_FILTER | select(.ts >= \"$SINCE_FILTER\")"
 fi
 
@@ -72,6 +72,6 @@ fi
 ks_collect_files
 
 # Perform search with single jq call if files exist
-if [ ${#FILES_TO_PROCESS[@]} -gt 0 ]; then
-    cat "${FILES_TO_PROCESS[@]}" | jq -r --arg search_term "$SEARCH_TERM" "$JQ_FILTER | select(.content | test(\$search_term; \"i\")) | \"\(.ts) [\(.type)/\(.topic)] \(.content)\"" 2>/dev/null || true
+if [[ ${#FILES_TO_PROCESS[@]} -gt 0 ]]; then
+    jq -r --arg search_term "$SEARCH_TERM" "$JQ_FILTER | select(.content | test(\$search_term; \"i\")) | \"\(.ts) [\(.type)/\(.topic)] \(.content)\"" "${FILES_TO_PROCESS[@]}" 2>/dev/null || true
 fi

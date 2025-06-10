@@ -4,10 +4,10 @@
 set -euo pipefail
 
 # Source environment and modular libraries
-source "$(dirname "$0")/../../.ks-env"
-ks_source_lib core      # For ks_timestamp (used by queue)
-ks_source_lib queue     # For ks_check_background_results
-ks_source_lib process   # For ks_cleanup_stale_processes
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"      # For ks_timestamp (used by queue)
+source "$KS_ROOT/tools/lib/queue.sh"     # For ks_check_background_results
+source "$KS_ROOT/tools/lib/process.sh"   # For ks_cleanup_stale_processes
 
 # Check for background analysis results
 ks_check_background_results || true  # Don't fail if no notifications
@@ -15,7 +15,7 @@ ks_check_background_results || true  # Don't fail if no notifications
 # Usage information
 usage() {
     cat << EOF
-Usage: $(basename "$0") [options]
+Usage: ${0##*/} [options]
 
 Monitor and manage background analysis processes.
 
@@ -32,11 +32,11 @@ Options:
   --help            Show this help message
 
 Examples:
-  $(basename "$0")                    # Show all process status
-  $(basename "$0") --active           # Show running processes
-  $(basename "$0") --cleanup          # Clean stale entries
-  $(basename "$0") --archive-old 30   # Archive entries older than 30 days
-  $(basename "$0") --kill-stale       # Kill hanging processes
+  ${0##*/}                    # Show all process status
+  ${0##*/} --active           # Show running processes
+  ${0##*/} --cleanup          # Clean stale entries
+  ${0##*/} --archive-old 30   # Archive entries older than 30 days
+  ${0##*/} --kill-stale       # Kill hanging processes
 EOF
 }
 
@@ -47,7 +47,7 @@ show_status() {
     
     # Check lock status
     local lock_file="$KS_BACKGROUND_DIR/background.lock"
-    if [ -f "$lock_file" ]; then
+    if [[ -f "$lock_file" ]]; then
         local lock_info=$(cat "$lock_file")
         echo "Background lock: HELD ($lock_info)"
     else
@@ -67,10 +67,10 @@ show_status() {
     echo ""
     
     # Show active processes
-    if [ "$active_count" -gt 0 ]; then
+    if [[ "$active_count" -gt 0 ]]; then
         echo "Active processes:"
         for process_file in "$KS_PROCESS_REGISTRY/active"/*.json; do
-            if [ -f "$process_file" ]; then
+            if [[ -f "$process_file" ]]; then
                 local task=$(jq -r '.task' "$process_file")
                 local pid=$(jq -r '.pid' "$process_file")
                 local start_time=$(jq -r '.start_time' "$process_file")
@@ -79,7 +79,7 @@ show_status() {
                 # Check if process is still running
                 if kill -0 "$pid" 2>/dev/null; then
                     echo "  ✓ $task (PID: $pid) - $start_time"
-                    if [ -n "$description" ]; then
+                    if [[ -n "$description" ]]; then
                         echo "    $description"
                     fi
                 else
@@ -91,10 +91,10 @@ show_status() {
     fi
     
     # Show recent completed processes
-    if [ "$completed_count" -gt 0 ]; then
+    if [[ "$completed_count" -gt 0 ]]; then
         echo "Recent completed processes:"
         find "$KS_PROCESS_REGISTRY/completed" -name "*.json" -mtime -1 | head -5 | while read -r process_file; do
-            if [ -f "$process_file" ]; then
+            if [[ -f "$process_file" ]]; then
                 local task=$(jq -r '.task' "$process_file")
                 local start_time=$(jq -r '.start_time' "$process_file")
                 local end_time=$(jq -r '.end_time' "$process_file")
@@ -105,10 +105,10 @@ show_status() {
     fi
     
     # Show recent failed processes
-    if [ "$failed_count" -gt 0 ]; then
+    if [[ "$failed_count" -gt 0 ]]; then
         echo "Recent failed processes:"
         find "$KS_PROCESS_REGISTRY/failed" -name "*.json" -mtime -1 | head -5 | while read -r process_file; do
-            if [ -f "$process_file" ]; then
+            if [[ -f "$process_file" ]]; then
                 local task=$(jq -r '.task' "$process_file")
                 local start_time=$(jq -r '.start_time' "$process_file")
                 echo "  ✗ $task - $start_time [FAILED]"
@@ -128,13 +128,13 @@ list_processes() {
     
     local process_count=$(find "$KS_PROCESS_REGISTRY/$status_dir" -name "*.json" 2>/dev/null | wc -l || echo 0)
     
-    if [ "$process_count" -eq 0 ]; then
+    if [[ "$process_count" -eq 0 ]]; then
         echo "No $status_name processes found."
         return
     fi
     
     for process_file in "$KS_PROCESS_REGISTRY/$status_dir"/*.json; do
-        if [ -f "$process_file" ]; then
+        if [[ -f "$process_file" ]]; then
             local task=$(jq -r '.task' "$process_file")
             local pid=$(jq -r '.pid' "$process_file")
             local start_time=$(jq -r '.start_time' "$process_file")
@@ -144,15 +144,15 @@ list_processes() {
             echo "Task: $task"
             echo "  PID: $pid"
             echo "  Started: $start_time"
-            if [ "$end_time" != "running" ]; then
+            if [[ "$end_time" != "running" ]]; then
                 echo "  Ended: $end_time"
             fi
-            if [ -n "$description" ]; then
+            if [[ -n "$description" ]]; then
                 echo "  Description: $description"
             fi
             
             # For active processes, check if still running
-            if [ "$status_dir" = "active" ]; then
+            if [[ "$status_dir" == "active" ]]; then
                 if kill -0 "$pid" 2>/dev/null; then
                     echo "  Status: RUNNING"
                 else
@@ -183,15 +183,15 @@ archive_old_processes() {
     local archive_dir="$KS_BACKGROUND_DIR/processes/archive/$(date +%Y%m)"
     local archived_count=0
     
-    if [ "$dry_run" = false ]; then
+    if [[ "$dry_run" == false ]]; then
         mkdir -p "$archive_dir"
     fi
     
     # Archive completed processes
     find "$KS_PROCESS_REGISTRY/completed" -name "*.json" -mtime +$days 2>/dev/null | while read -r process_file; do
-        if [ -f "$process_file" ]; then
+        if [[ -f "$process_file" ]]; then
             local filename=$(basename "$process_file")
-            if [ "$dry_run" = true ]; then
+            if [[ "$dry_run" == true ]]; then
                 echo "Would archive: completed/$filename"
             else
                 mv "$process_file" "$archive_dir/"
@@ -203,9 +203,9 @@ archive_old_processes() {
     
     # Archive failed processes
     find "$KS_PROCESS_REGISTRY/failed" -name "*.json" -mtime +$days 2>/dev/null | while read -r process_file; do
-        if [ -f "$process_file" ]; then
+        if [[ -f "$process_file" ]]; then
             local filename=$(basename "$process_file")
-            if [ "$dry_run" = true ]; then
+            if [[ "$dry_run" == true ]]; then
                 echo "Would archive: failed/$filename"
             else
                 mv "$process_file" "$archive_dir/"
@@ -217,10 +217,10 @@ archive_old_processes() {
     
     # Also clean up old reviewed findings
     local findings_archive="$KS_BACKGROUND_DIR/reviewed"
-    if [ -d "$findings_archive" ]; then
+    if [[ -d "$findings_archive" ]]; then
         find "$findings_archive" -name "*.json" -mtime +$days 2>/dev/null | while read -r findings_file; do
-            if [ -f "$findings_file" ]; then
-                if [ "$dry_run" = true ]; then
+            if [[ -f "$findings_file" ]]; then
+                if [[ "$dry_run" == true ]]; then
                     echo "Would remove old findings: $(basename "$findings_file")"
                 else
                     rm -f "$findings_file"
@@ -230,10 +230,10 @@ archive_old_processes() {
         done
     fi
     
-    if [ "$archived_count" -eq 0 ]; then
+    if [[ "$archived_count" -eq 0 ]]; then
         echo "No old process records found."
     else
-        if [ "$dry_run" = true ]; then
+        if [[ "$dry_run" == true ]]; then
             echo "Would archive $archived_count process records."
         else
             echo "Archived $archived_count process records to $archive_dir"
@@ -248,15 +248,15 @@ kill_stale_processes() {
     local killed_count=0
     
     for process_file in "$KS_PROCESS_REGISTRY/active"/*.json; do
-        if [ -f "$process_file" ]; then
+        if [[ -f "$process_file" ]]; then
             local pid=$(jq -r '.pid' "$process_file")
             local task=$(jq -r '.task' "$process_file")
             local start_epoch=$(jq -r '.start_epoch // 0' "$process_file")
-            local current_time=$(date +%s)
+            local current_time=$EPOCHSECONDS
             local age=$((current_time - start_epoch))
             
             # Kill processes older than 30 minutes
-            if [ "$age" -gt 1800 ]; then
+            if [[ "$age" -gt 1800 ]]; then
                 if kill -0 "$pid" 2>/dev/null; then
                     echo "Killing stale process: $task (PID: $pid, age: ${age}s)"
                     kill -TERM "$pid" 2>/dev/null || true
@@ -270,7 +270,7 @@ kill_stale_processes() {
         fi
     done
     
-    if [ "$killed_count" -eq 0 ]; then
+    if [[ "$killed_count" -eq 0 ]]; then
         echo "No stale processes found to kill."
     else
         echo "Killed $killed_count stale processes."
@@ -289,7 +289,7 @@ show_history() {
     
     # Add completed processes
     for process_file in "$KS_PROCESS_REGISTRY/completed"/*.json; do
-        if [ -f "$process_file" ]; then
+        if [[ -f "$process_file" ]]; then
             local end_epoch=$(jq -r '.end_epoch // 0' "$process_file")
             echo "$end_epoch:completed:$process_file" >> "$temp_file"
         fi
@@ -297,14 +297,14 @@ show_history() {
     
     # Add failed processes
     for process_file in "$KS_PROCESS_REGISTRY/failed"/*.json; do
-        if [ -f "$process_file" ]; then
+        if [[ -f "$process_file" ]]; then
             local end_epoch=$(jq -r '.end_epoch // 0' "$process_file")
             echo "$end_epoch:failed:$process_file" >> "$temp_file"
         fi
     done
     
     # Sort by timestamp and show recent 20
-    if [ -s "$temp_file" ]; then
+    if [[ -s "$temp_file" ]]; then
         sort -rn "$temp_file" | head -20 | while IFS=':' read -r timestamp status filepath; do
             local task=$(jq -r '.task' "$filepath")
             local start_time=$(jq -r '.start_time' "$filepath")
@@ -383,7 +383,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Default action
-if [ -z "$ACTION" ]; then
+if [[ -z "$ACTION" ]]; then
     ACTION="status"
 fi
 

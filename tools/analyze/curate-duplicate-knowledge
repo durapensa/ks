@@ -1,13 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Curate duplicate knowledge to prevent KG pollution
 # Analyzes new content against existing knowledge to detect redundancy
 
 set -euo pipefail
 
 # Source environment and modular libraries
-source "$(dirname "$0")/../../.ks-env"
-ks_source_lib core      # For ks_timestamp (used by queue)
-ks_source_lib queue     # For ks_check_background_results, ks_queue_list_pending
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"      # For ks_timestamp (used by queue)
+source "$KS_ROOT/tools/lib/queue.sh"     # For ks_check_background_results, ks_queue_list_pending
 
 # Check for background analysis results
 ks_check_background_results || true
@@ -19,7 +19,7 @@ CURATION_WINDOW="${KS_CURATION_WINDOW:-30}"  # Days to check for duplicates
 # Usage information
 usage() {
     cat << EOF
-Usage: $(basename "$0") [options] <content>
+Usage: ${0##*/} [options] <content>
 
 Analyze content for redundancy against existing knowledge to prevent
 knowledge graph pollution with similar or duplicate insights.
@@ -39,9 +39,9 @@ Exit codes:
   2 - Error in analysis
 
 Examples:
-  $(basename "$0") --content "Memory systems analysis" --type themes
-  $(basename "$0") --threshold 0.8 --content "Temporal knowledge patterns"
-  echo "New insight" | $(basename "$0") --type insights
+  ${0##*/} --content "Memory systems analysis" --type themes
+  ${0##*/} --threshold 0.8 --content "Temporal knowledge patterns"
+  echo "New insight" | ${0##*/} --type insights
 EOF
 }
 
@@ -82,7 +82,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            if [ -z "$CONTENT" ]; then
+            if [[ -z "$CONTENT" ]]; then
                 CONTENT="$1"
             else
                 echo "Unknown option: $1" >&2
@@ -95,8 +95,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Read from stdin if no content provided
-if [ -z "$CONTENT" ]; then
-    if [ -t 0 ]; then
+if [[ -z "$CONTENT" ]]; then
+    if [[ -t 0 ]]; then
         echo "Error: No content provided and stdin is empty" >&2
         usage >&2
         exit 2
@@ -105,7 +105,7 @@ if [ -z "$CONTENT" ]; then
 fi
 
 # Validate content
-if [ -z "$CONTENT" ]; then
+if [[ -z "$CONTENT" ]]; then
     echo "Error: Content cannot be empty" >&2
     exit 2
 fi
@@ -131,7 +131,7 @@ calculate_similarity() {
     local terms1=$(extract_key_terms "$content1")
     local terms2=$(extract_key_terms "$content2")
     
-    if [ -z "$terms1" ] || [ -z "$terms2" ]; then
+    if [[ -z "$terms1" ]] || [[ -z "$terms2" ]]; then
         echo "0.0"
         return
     fi
@@ -144,7 +144,7 @@ calculate_similarity() {
     # Use Jaccard similarity: intersection / union
     local union_count=$((total_terms1 + total_terms2 - common_count))
     
-    if [ "$union_count" -eq 0 ]; then
+    if [[ "$union_count" -eq 0 ]]; then
         echo "0.0"
     else
         echo "scale=3; $common_count / $union_count" | bc -l
@@ -156,15 +156,15 @@ check_recent_findings() {
     local content="$1"
     local knowledge_type="$2"
     
-    if [ "$VERBOSE" = true ]; then
+    if [[ "$VERBOSE" == true ]]; then
         echo "Checking against recent analysis findings..." >&2
     fi
     
     # Get pending analyses from queue
     local pending=$(ks_queue_list_pending)
     
-    if [ "$pending" = "[]" ]; then
-        if [ "$VERBOSE" = true ]; then
+    if [[ "$pending" == "[]" ]]; then
+        if [[ "$VERBOSE" == true ]]; then
             echo "No pending analyses to check against" >&2
         fi
         return 0
@@ -174,14 +174,14 @@ check_recent_findings() {
     echo "$pending" | jq -c '.[]' | while IFS= read -r analysis; do
         local findings_file=$(echo "$analysis" | jq -r '.value.findings_file')
         
-        if [ -f "$findings_file" ]; then
+        if [[ -f "$findings_file" ]]; then
             local findings=$(jq -r '.findings[]? // .[]' "$findings_file" 2>/dev/null)
             local existing_content=$(echo "$findings" | jq -r '.content // .theme // .insight // .pattern // ""' | tr '\n' ' ')
             
-            if [ -n "$existing_content" ]; then
+            if [[ -n "$existing_content" ]]; then
                 local similarity=$(calculate_similarity "$content" "$existing_content")
                 
-                if [ "$VERBOSE" = true ]; then
+                if [[ "$VERBOSE" == true ]]; then
                     echo "Similarity with pending findings: $similarity" >&2
                 fi
                 
@@ -201,7 +201,7 @@ check_derived_knowledge() {
     local content="$1"
     local knowledge_type="$2"
     
-    if [ "$VERBOSE" = true ]; then
+    if [[ "$VERBOSE" == true ]]; then
         echo "Checking against derived knowledge..." >&2
     fi
     
@@ -219,8 +219,8 @@ check_derived_knowledge() {
             ;;
     esac
     
-    if [ ! -d "$derived_dir" ]; then
-        if [ "$VERBOSE" = true ]; then
+    if [[ ! -d "$derived_dir" ]]; then
+        if [[ "$VERBOSE" == true ]]; then
             echo "No derived directory found: $derived_dir" >&2
         fi
         return 0
@@ -230,11 +230,11 @@ check_derived_knowledge() {
     local derived_files=$(find "$derived_dir" -name "*.md" -mtime -$CURATION_WINDOW 2>/dev/null || true)
     
     for file in $derived_files; do
-        if [ -f "$file" ]; then
+        if [[ -f "$file" ]]; then
             local existing_content=$(cat "$file")
             local similarity=$(calculate_similarity "$content" "$existing_content")
             
-            if [ "$VERBOSE" = true ]; then
+            if [[ "$VERBOSE" == true ]]; then
                 echo "Similarity with $(basename "$file"): $similarity" >&2
             fi
             
@@ -250,7 +250,7 @@ check_derived_knowledge() {
 
 # Main curation logic
 main() {
-    if [ "$VERBOSE" = true ]; then
+    if [[ "$VERBOSE" == true ]]; then
         echo "Curating content: $(echo "$CONTENT" | head -c 50)..." >&2
         echo "Type: $KNOWLEDGE_TYPE, Threshold: $SIMILARITY_THRESHOLD" >&2
     fi
@@ -265,7 +265,7 @@ main() {
         exit 1
     fi
     
-    if [ "$VERBOSE" = true ]; then
+    if [[ "$VERBOSE" == true ]]; then
         echo "Content is unique and safe to add." >&2
     else
         echo "Content is unique."

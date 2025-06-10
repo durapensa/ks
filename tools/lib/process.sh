@@ -14,10 +14,10 @@ ks_acquire_background_lock() {
     local lock_timeout=300  # 5 minutes
     
     # Check if lock exists and is recent
-    if [ -f "$lock_file" ]; then
-        local lock_age=$(( $(date +%s) - $(stat -c %Y "$lock_file" 2>/dev/null || stat -f %m "$lock_file" 2>/dev/null || echo 0) ))
+    if [[ -f "$lock_file" ]]; then
+        local lock_age=$(( EPOCHSECONDS - $(stat -c %Y "$lock_file" 2>/dev/null || stat -f %m "$lock_file" 2>/dev/null || echo 0) ))
         
-        if [ "$lock_age" -lt "$lock_timeout" ]; then
+        if [[ "$lock_age" -lt "$lock_timeout" ]]; then
             # Lock is recent, another process is likely running
             return 1
         else
@@ -27,7 +27,7 @@ ks_acquire_background_lock() {
     fi
     
     # Acquire lock
-    echo "$$:$(date +%s):$(whoami)" > "$lock_file"
+    echo "$$:$EPOCHSECONDS:$(whoami)" > "$lock_file"
     return 0
 }
 
@@ -54,7 +54,7 @@ ks_register_background_process() {
   "task": "$task_name",
   "pid": $pid,
   "start_time": "$(ks_timestamp)",
-  "start_epoch": $(date +%s),
+  "start_epoch": $EPOCHSECONDS,
   "description": "$description",
   "status": "running"
 }
@@ -74,11 +74,11 @@ ks_complete_background_process() {
     local target_dir="$KS_PROCESS_REGISTRY/$status"
     local target_file="$target_dir/${task_name}-${pid}.json"
     
-    if [ -f "$active_file" ]; then
+    if [[ -f "$active_file" ]]; then
         # Add completion information
         local temp_file=$(mktemp)
         jq --arg end_time "$(ks_timestamp)" \
-           --arg end_epoch "$(date +%s)" \
+           --arg end_epoch "$EPOCHSECONDS" \
            --arg status "$status" \
            --arg output "$output_file" \
            '. + {end_time: $end_time, end_epoch: ($end_epoch | tonumber), status: $status, output_file: $output}' \
@@ -94,14 +94,14 @@ ks_cleanup_stale_processes() {
     # Usage: ks_cleanup_stale_processes
     
     local stale_timeout=1800  # 30 minutes
-    local current_time=$(date +%s)
+    local current_time=$EPOCHSECONDS
     
     for process_file in "$KS_PROCESS_REGISTRY/active"/*.json; do
-        if [ -f "$process_file" ]; then
+        if [[ -f "$process_file" ]]; then
             local start_epoch=$(jq -r '.start_epoch // 0' "$process_file")
             local age=$((current_time - start_epoch))
             
-            if [ "$age" -gt "$stale_timeout" ]; then
+            if [[ "$age" -gt "$stale_timeout" ]]; then
                 local task_name=$(jq -r '.task' "$process_file")
                 local pid=$(jq -r '.pid' "$process_file")
                 

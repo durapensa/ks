@@ -1,15 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Check event count triggers and spawn background analyses
 # Called automatically after event capture
 
 set -euo pipefail
 
 # Source environment and modular libraries
-source "$(dirname "$0")/../../.ks-env"
-ks_source_lib core      # For ks_timestamp
-ks_source_lib events    # For ks_count_new_events
-ks_source_lib files     # For ks_collect_files
-ks_source_lib queue     # For ks_queue_list_pending, ks_queue_check, ks_queue_add_pending
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"      # For ks_timestamp
+source "$KS_ROOT/lib/events.sh"    # For ks_count_new_events
+source "$KS_ROOT/lib/files.sh"     # For ks_collect_files
+source "$KS_ROOT/tools/lib/queue.sh"     # For ks_queue_list_pending, ks_queue_check, ks_queue_add_pending
 
 # Configuration
 EVENT_THRESHOLD_THEMES="${KS_EVENT_THRESHOLD_THEMES:-10}"
@@ -22,7 +22,7 @@ SILENT_MODE="${1:-silent}"
 
 # Initialize state file
 init_state() {
-    if [ ! -f "$LAST_COUNT_FILE" ]; then
+    if [[ ! -f "$LAST_COUNT_FILE" ]]; then
         cat > "$LAST_COUNT_FILE" << EOF
 {
   "last_count": 0,
@@ -65,7 +65,7 @@ save_state() {
 
 # Notify user if not in silent mode
 notify() {
-    if [ "$SILENT_MODE" != "silent" ]; then
+    if [[ "$SILENT_MODE" != "silent" ]]; then
         echo "$@"
     fi
 }
@@ -79,14 +79,14 @@ spawn_theme_analysis() {
     
     (
         # Run analysis with JSON output, wrapping in findings array
-        local tool_path="$(dirname "$0")/../analyze/extract-themes"
+        local tool_path="${0%/*}/../analyze/extract-themes"
         local raw_output=$("$tool_path" --days 3 --format json 2>/dev/null)
         
-        if [ -n "$raw_output" ]; then
+        if [[ -n "$raw_output" ]]; then
             # Wrap the themes in a findings structure
-            echo "$raw_output" | jq '{findings: .themes}' > "$findings_file"
+            jq '{findings: .themes}' > "$findings_file" <<< "$raw_output"
             
-            if [ -s "$findings_file" ]; then
+            if [[ -s "$findings_file" ]]; then
                 # Add to queue
                 ks_queue_add_pending "theme-analysis" "$findings_file"
             else
@@ -109,14 +109,14 @@ spawn_connection_analysis() {
     
     (
         # Run analysis with JSON output, wrapping in findings array
-        local tool_path="$(dirname "$0")/../analyze/find-connections"
+        local tool_path="${0%/*}/../analyze/find-connections"
         local raw_output=$("$tool_path" --days 7 --format json 2>/dev/null)
         
-        if [ -n "$raw_output" ]; then
+        if [[ -n "$raw_output" ]]; then
             # Wrap the connections in a findings structure
-            echo "$raw_output" | jq '{findings: .connections}' > "$findings_file"
+            jq '{findings: .connections}' > "$findings_file" <<< "$raw_output"
             
-            if [ -s "$findings_file" ]; then
+            if [[ -s "$findings_file" ]]; then
                 # Add to queue
                 ks_queue_add_pending "connection-analysis" "$findings_file"
             else
@@ -141,15 +141,15 @@ spawn_pattern_analysis() {
         # Run analysis with JSON output, wrapping in findings array
         ks_collect_files
         
-        if [ ${#FILES_TO_PROCESS[@]} -gt 0 ]; then
-            local tool_path="$(dirname "$0")/../analyze/identify-recurring-thought-patterns"
+        if [[ ${#FILES_TO_PROCESS[@]} -gt 0 ]]; then
+            local tool_path="${0%/*}/../analyze/identify-recurring-thought-patterns"
             local raw_output=$(cat "${FILES_TO_PROCESS[@]}" | "$tool_path" --days 14 --format json 2>/dev/null)
             
-            if [ -n "$raw_output" ]; then
+            if [[ -n "$raw_output" ]]; then
                 # Wrap patterns in a findings structure (handle both themes and direct array)
-                echo "$raw_output" | jq '{findings: (if .themes then .themes else . end)}' > "$findings_file"
+                jq '{findings: (if .themes then .themes else . end)}' > "$findings_file" <<< "$raw_output"
                 
-                if [ -s "$findings_file" ]; then
+                if [[ -s "$findings_file" ]]; then
                     # Add to queue
                     ks_queue_add_pending "pattern-analysis" "$findings_file"
                 else
@@ -171,13 +171,13 @@ main() {
     CURRENT_COUNT=$(ks_count_new_events)
     
     # No new events since last check
-    if [ "$CURRENT_COUNT" -le "$LAST_COUNT" ]; then
+    if [[ "$CURRENT_COUNT" -le "$LAST_COUNT" ]]; then
         return 0
     fi
     
     # Check if any analyses are pending review
     local pending=$(ks_queue_list_pending)
-    if [ "$pending" != "[]" ] && [ "$SILENT_MODE" = "verbose" ]; then
+    if [[ "$pending" != "[]" ]] && [[ "$SILENT_MODE" == "verbose" ]]; then
         notify "⚠️  Analyses pending review. Run 'tools/analyze/review-findings' in another terminal."
         save_state
         return 0
@@ -189,21 +189,21 @@ main() {
     local events_since_pattern=$((CURRENT_COUNT - LAST_PATTERN_TRIGGER))
     
     # Check theme trigger
-    if [ "$events_since_theme" -ge "$EVENT_THRESHOLD_THEMES" ]; then
+    if [[ "$events_since_theme" -ge "$EVENT_THRESHOLD_THEMES" ]]; then
         if ks_queue_check "theme-analysis"; then
             spawn_theme_analysis
         fi
     fi
     
     # Check connection trigger
-    if [ "$events_since_connection" -ge "$EVENT_THRESHOLD_CONNECTIONS" ]; then
+    if [[ "$events_since_connection" -ge "$EVENT_THRESHOLD_CONNECTIONS" ]]; then
         if ks_queue_check "connection-analysis"; then
             spawn_connection_analysis
         fi
     fi
     
     # Check pattern trigger
-    if [ "$events_since_pattern" -ge "$EVENT_THRESHOLD_PATTERNS" ]; then
+    if [[ "$events_since_pattern" -ge "$EVENT_THRESHOLD_PATTERNS" ]]; then
         if ks_queue_check "pattern-analysis"; then
             spawn_pattern_analysis
         fi

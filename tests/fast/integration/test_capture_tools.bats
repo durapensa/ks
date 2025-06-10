@@ -20,6 +20,10 @@ setup() {
     # Source environment (will use our overrides)
     source "$KS_ROOT/.ks-env"
     
+    # Source required library and ensure directories
+    source "$KS_ROOT/lib/core.sh"
+    ks_ensure_dirs
+    
     # Create test data
     cat > "$KS_HOT_LOG" << 'EOF'
 {"ts":"2025-01-20T10:00:00Z","type":"thought","topic":"memory","content":"Human memory is associative"}

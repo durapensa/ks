@@ -29,13 +29,13 @@ ks_validate_days() {
     # Usage: ks_validate_days "$DAYS"
     local days="$1"
     
-    if ! [[ "$days" =~ ^[0-9]+$ ]] || [ "$days" -le 0 ]; then
+    if ! [[ "$days" =~ ^[0-9]+$ ]] || [[ "$days" -le 0 ]]; then
         echo "Error: --days must be a positive integer, got: '$days'" >&2
         return 1
     fi
     
     # Reasonable upper limit to prevent accidents
-    if [ "$days" -gt 3650 ]; then
+    if [[ "$days" -gt 3650 ]]; then
         echo "Warning: --days value '$days' is unusually large (>10 years)" >&2
     fi
     

@@ -1,13 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Interactive tool to review and approve/reject analysis findings
 # Run this in a separate terminal when ks notifies of pending findings
 
 set -euo pipefail
 
 # Source environment and modular libraries
-source "$(dirname "$0")/../../.ks-env"
-ks_source_lib core      # For ks_timestamp
-ks_source_lib queue     # For ks_queue_list_pending, ks_queue_clear
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"      # For ks_timestamp
+source "$KS_ROOT/tools/lib/queue.sh"     # For ks_queue_list_pending, ks_queue_clear
 
 # ANSI color codes
 GREEN='\033[0;32m'
@@ -20,7 +20,7 @@ NC='\033[0m' # No Color
 # Usage information
 usage() {
     cat << EOF
-Usage: $(basename "$0") [options]
+Usage: ${0##*/} [options]
 
 Interactive tool to review findings from background analyses.
 Run this in a separate terminal when notified of pending reviews.
@@ -36,8 +36,8 @@ This tool will:
 4. Clear the analysis from the queue when complete
 
 Examples:
-  $(basename "$0")           # Start interactive review
-  $(basename "$0") --list    # See what's pending
+  ${0##*/}           # Start interactive review
+  ${0##*/} --list    # See what's pending
 EOF
 }
 
@@ -50,23 +50,37 @@ display_finding() {
     echo -e "\n${BOLD}Finding ${index}/${total}${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
-    # Extract finding details
-    local content=$(echo "$finding" | jq -r '.content // .theme // .insight // .pattern // "No content"')
-    local type=$(echo "$finding" | jq -r '.type // "unknown"')
-    local confidence=$(echo "$finding" | jq -r '.confidence // "N/A"')
-    local context=$(echo "$finding" | jq -r '.context // ""')
+    # Extract finding details - handle various analysis output formats
+    local content=$(echo "$finding" | jq -r '.content // .theme // .insight // .pattern // .description // .name // "No content"')
+    local name=$(echo "$finding" | jq -r '.name // ""')
+    local description=$(echo "$finding" | jq -r '.description // ""')
+    local type=$(echo "$finding" | jq -r '.type // "theme"')
+    local confidence=$(echo "$finding" | jq -r '.confidence // .frequency // "N/A"')
+    local context=$(echo "$finding" | jq -r '.context // .supporting_quotes // ""')
+    
+    # Build display content from available fields
+    if [[ -n "$name" ]] && [[ "$name" != "null" ]]; then
+        content="$name"
+        if [[ -n "$description" ]] && [[ "$description" != "null" ]]; then
+            content="$content: $description"
+        fi
+    fi
     
     echo -e "${BOLD}Type:${NC} $type"
-    if [ "$confidence" != "N/A" ]; then
+    if [[ "$confidence" != "N/A" ]]; then
         echo -e "${BOLD}Confidence:${NC} $confidence"
     fi
     
     echo -e "\n${BOLD}Content:${NC}"
     echo "$content" | fold -s -w 70 | sed 's/^/  /'
     
-    if [ -n "$context" ] && [ "$context" != "null" ]; then
-        echo -e "\n${BOLD}Context:${NC}"
-        echo "$context" | fold -s -w 70 | sed 's/^/  /'
+    if [[ -n "$context" ]] && [[ "$context" != "null" ]] && [[ "$context" != "[]" ]]; then
+        echo -e "\n${BOLD}Supporting Evidence:${NC}"
+        if echo "$context" | jq -e '. | type == "array"' >/dev/null 2>&1; then
+            echo "$context" | jq -r '.[]' | sed 's/^/  • /'
+        else
+            echo "$context" | fold -s -w 70 | sed 's/^/  /'
+        fi
     fi
     
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -91,8 +105,21 @@ integrate_finding() {
             ;;
     esac
     
-    # Extract content for the event
-    local content=$(echo "$finding" | jq -r '.content // .theme // .insight // .pattern // "Approved finding"')
+    # Extract content for the event - handle various analysis formats
+    local name=$(echo "$finding" | jq -r '.name // ""')
+    local description=$(echo "$finding" | jq -r '.description // ""')
+    local content=$(echo "$finding" | jq -r '.content // .theme // .insight // .pattern // ""')
+    
+    # Build content from available fields
+    if [[ -n "$name" ]] && [[ "$name" != "null" ]]; then
+        content="$name"
+        if [[ -n "$description" ]] && [[ "$description" != "null" ]]; then
+            content="$content: $description"
+        fi
+    elif [[ -z "$content" ]] || [[ "$content" == "null" ]]; then
+        content="Approved finding"
+    fi
+    
     local metadata=$(echo "$finding" | jq -c '{source: "background-analysis", approved_at: now | strftime("%Y-%m-%dT%H:%M:%SZ")}')
     
     # Create the event
@@ -119,17 +146,25 @@ review_analysis() {
     local analysis_type="$1"
     local findings_file="$2"
     
-    if [ ! -f "$findings_file" ]; then
+    if [[ ! -f "$findings_file" ]]; then
         echo -e "${RED}Error: Findings file not found: $findings_file${NC}"
         return 1
     fi
     
     # Load findings
-    local findings=$(jq -c '.findings[]? // .[]' "$findings_file" 2>/dev/null || echo "[]")
-    local count=$(echo "$findings" | wc -l)
+    local findings_raw=$(jq -r '.findings' "$findings_file" 2>/dev/null)
+    if [[ "$findings_raw" == "null" ]] || [[ "$findings_raw" == "[]" ]]; then
+        local findings=""
+        local count=0
+    else
+        local findings=$(jq -c '.findings[]? // .[]' "$findings_file" 2>/dev/null | grep -v '^null$' || echo "")
+        local count=$(echo "$findings" | grep -c . || echo "0")
+    fi
     
-    if [ -z "$findings" ] || [ "$count" -eq 0 ]; then
-        echo -e "${YELLOW}No findings in file${NC}"
+    if [[ -z "$findings" ]] || [[ "$count" -eq 0 ]]; then
+        echo -e "${YELLOW}Analysis completed but found no significant patterns or themes.${NC}"
+        echo -e "This can happen when there isn't enough data or patterns aren't strong enough."
+        echo -e "${GREEN}✓ Clearing from queue (no action needed)${NC}"
         ks_queue_clear "$analysis_type"
         return 0
     fi
@@ -203,7 +238,7 @@ review_analysis() {
 list_pending() {
     local pending=$(ks_queue_list_pending)
     
-    if [ "$pending" = "[]" ]; then
+    if [[ "$pending" == "[]" ]]; then
         echo -e "${YELLOW}No analyses pending review${NC}"
         return 0
     fi
@@ -212,7 +247,33 @@ list_pending() {
     
     echo "$pending" | jq -r '.[] | "• \(.type) - completed at \(.value.completed_at)"'
     
-    echo -e "\nRun $(basename "$0") to review these findings"
+    echo -e "\nRun ${0##*/} to review these findings"
+}
+
+# Get analysis preview info
+get_analysis_preview() {
+    local findings_file="$1"
+    
+    if [[ ! -f "$findings_file" ]]; then
+        echo "File not found"
+        return
+    fi
+    
+    # Check if findings is null or empty array
+    local findings_raw=$(jq -r '.findings' "$findings_file" 2>/dev/null)
+    if [[ "$findings_raw" == "null" ]] || [[ "$findings_raw" == "[]" ]]; then
+        echo "Empty (no findings)"
+        return
+    fi
+    
+    local findings=$(jq -c '.findings[]? // .[]' "$findings_file" 2>/dev/null | grep -v '^null$' || echo "")
+    local count=$(echo "$findings" | grep -c . || echo "0")
+    
+    if [[ "$count" -eq 0 ]]; then
+        echo "Empty (no findings)"
+    else
+        echo "$count findings"
+    fi
 }
 
 # Main review loop
@@ -220,7 +281,7 @@ main_review() {
     # Check for pending analyses
     local pending=$(ks_queue_list_pending)
     
-    if [ "$pending" = "[]" ]; then
+    if [[ "$pending" == "[]" ]]; then
         echo -e "${YELLOW}No analyses pending review${NC}"
         exit 0
     fi
@@ -228,15 +289,25 @@ main_review() {
     echo -e "${BOLD}Knowledge System - Finding Review${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
+    # Read analyses into array to avoid subshell issues
+    local analyses=()
+    while IFS= read -r line; do
+        analyses+=("$line")
+    done < <(echo "$pending" | jq -c '.[]')
+    
     # Process each pending analysis
-    echo "$pending" | jq -c '.[]' | while IFS= read -r analysis; do
+    for analysis in "${analyses[@]}"; do
         local type=$(echo "$analysis" | jq -r '.type')
         local findings_file=$(echo "$analysis" | jq -r '.value.findings_file')
+        local completed_at=$(echo "$analysis" | jq -r '.value.completed_at')
+        local preview=$(get_analysis_preview "$findings_file")
         
-        echo -e "\n${BOLD}Analysis type:${NC} $type"
+        echo -e "\n${BOLD}Analysis:${NC} $type"
+        echo -e "${BOLD}Completed:${NC} $completed_at"
+        echo -e "${BOLD}Status:${NC} $preview"
         
         # Ask if user wants to review this analysis
-        echo -ne "Review this analysis now? (y/n): "
+        echo -ne "\nReview this analysis now? (y/n): "
         read -r response
         
         case "$response" in
