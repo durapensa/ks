@@ -22,14 +22,17 @@ Options:
   --completed       List only completed processes
   --failed          List only failed processes
   --cleanup         Clean up stale process entries
+  --archive-old     Archive process records older than N days
   --kill-stale      Kill stale active processes
   --history         Show process history
+  --dry-run         Show what would be done without changes
   --help            Show this help message
 
 Examples:
   $(basename "$0")                    # Show all process status
   $(basename "$0") --active           # Show running processes
   $(basename "$0") --cleanup          # Clean stale entries
+  $(basename "$0") --archive-old 30   # Archive entries older than 30 days
   $(basename "$0") --kill-stale       # Kill hanging processes
 EOF
 }
@@ -167,6 +170,74 @@ cleanup_stale() {
     echo "Cleanup completed."
 }
 
+# Archive old process records
+archive_old_processes() {
+    local days="${1:-30}"
+    local dry_run="${2:-false}"
+    
+    echo "Archiving process records older than $days days..."
+    
+    local archive_dir="$KS_BACKGROUND_DIR/processes/archive/$(date +%Y%m)"
+    local archived_count=0
+    
+    if [ "$dry_run" = false ]; then
+        mkdir -p "$archive_dir"
+    fi
+    
+    # Archive completed processes
+    find "$KS_PROCESS_REGISTRY/completed" -name "*.json" -mtime +$days 2>/dev/null | while read -r process_file; do
+        if [ -f "$process_file" ]; then
+            local filename=$(basename "$process_file")
+            if [ "$dry_run" = true ]; then
+                echo "Would archive: completed/$filename"
+            else
+                mv "$process_file" "$archive_dir/"
+                echo "Archived: completed/$filename"
+            fi
+            archived_count=$((archived_count + 1))
+        fi
+    done
+    
+    # Archive failed processes
+    find "$KS_PROCESS_REGISTRY/failed" -name "*.json" -mtime +$days 2>/dev/null | while read -r process_file; do
+        if [ -f "$process_file" ]; then
+            local filename=$(basename "$process_file")
+            if [ "$dry_run" = true ]; then
+                echo "Would archive: failed/$filename"
+            else
+                mv "$process_file" "$archive_dir/"
+                echo "Archived: failed/$filename"
+            fi
+            archived_count=$((archived_count + 1))
+        fi
+    done
+    
+    # Also clean up old reviewed findings
+    local findings_archive="$KS_BACKGROUND_DIR/reviewed"
+    if [ -d "$findings_archive" ]; then
+        find "$findings_archive" -name "*.json" -mtime +$days 2>/dev/null | while read -r findings_file; do
+            if [ -f "$findings_file" ]; then
+                if [ "$dry_run" = true ]; then
+                    echo "Would remove old findings: $(basename "$findings_file")"
+                else
+                    rm -f "$findings_file"
+                    echo "Removed old findings: $(basename "$findings_file")"
+                fi
+            fi
+        done
+    fi
+    
+    if [ "$archived_count" -eq 0 ]; then
+        echo "No old process records found."
+    else
+        if [ "$dry_run" = true ]; then
+            echo "Would archive $archived_count process records."
+        else
+            echo "Archived $archived_count process records to $archive_dir"
+        fi
+    fi
+}
+
 # Kill stale active processes
 kill_stale_processes() {
     echo "Checking for stale active processes to terminate..."
@@ -253,34 +324,90 @@ show_history() {
 }
 
 # Parse arguments
-case "${1:-status}" in
-    --status|status)
+DRY_RUN=false
+ACTION=""
+ARCHIVE_DAYS=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --archive-old)
+            ACTION="archive-old"
+            ARCHIVE_DAYS="${2:-30}"
+            shift 2
+            ;;
+        --status|status)
+            ACTION="status"
+            shift
+            ;;
+        --active)
+            ACTION="active"
+            shift
+            ;;
+        --completed)
+            ACTION="completed"
+            shift
+            ;;
+        --failed)
+            ACTION="failed"
+            shift
+            ;;
+        --cleanup)
+            ACTION="cleanup"
+            shift
+            ;;
+        --kill-stale)
+            ACTION="kill-stale"
+            shift
+            ;;
+        --history)
+            ACTION="history"
+            shift
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Default action
+if [ -z "$ACTION" ]; then
+    ACTION="status"
+fi
+
+# Execute action
+case "$ACTION" in
+    status)
         show_status
         ;;
-    --active)
+    active)
         list_processes "active" "Active"
         ;;
-    --completed)
+    completed)
         list_processes "completed" "Completed"
         ;;
-    --failed)
+    failed)
         list_processes "failed" "Failed"
         ;;
-    --cleanup)
+    cleanup)
         cleanup_stale
         ;;
-    --kill-stale)
+    archive-old)
+        archive_old_processes "$ARCHIVE_DAYS" "$DRY_RUN"
+        ;;
+    kill-stale)
         kill_stale_processes
         ;;
-    --history)
+    history)
         show_history
-        ;;
-    --help)
-        usage
-        ;;
-    *)
-        echo "Unknown option: $1" >&2
-        usage >&2
-        exit 1
         ;;
 esac
