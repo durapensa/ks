@@ -27,7 +27,7 @@ tools/plumbing/monitor-background-processes --status  # Check system health
 - **`ks`** command - Enter conversational knowledge capture mode (configured via setup.sh)
 - **`tools/`** - Internal processing tools for knowledge analysis
 - **Background Analysis** - Automatic theme/connection extraction after event thresholds
-- **Review Workflow** - `tools/analyze/review-findings` for approving insights
+- **Review Workflow** - `tools/workflow/review-findings` for approving insights
 
 ## Architecture
 

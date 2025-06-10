@@ -1,6 +1,6 @@
 # Development Status
 
-**Last Updated**: January 2025  
+**Last Updated**: June 2025  
 **Current Phase**: Test suite stabilization and analysis tool completion
 
 ## Current Focus
@@ -25,7 +25,7 @@
 **Status**: Implemented but needs real-world testing
 **Validation Tasks**:
 - Capture 10+ events to trigger theme analysis
-- Test `tools/analyze/review-findings` workflow
+- Test `tools/workflow/review-findings` workflow
 - Verify queue blocking prevents duplicate analyses
 - Monitor cost and performance patterns
 
@@ -62,7 +62,7 @@ cat knowledge/.background/.event_trigger_state
 
 # Manual triggers
 tools/plumbing/check-event-triggers verbose
-tools/analyze/review-findings     # In separate terminal
+tools/workflow/review-findings     # In separate terminal
 ```
 
 ### Key File Locations
@@ -76,6 +76,19 @@ tools/analyze/review-findings     # In separate terminal
 - **Analysis Tools**: Pure functions outputting JSON, called by background scheduler
 - **Process Management**: JSON-based state tracking with file locking
 - **Event Triggers**: Automatic after capture, configurable thresholds
+
+## Recent Fixes
+
+### Review-Findings Tool Issues (June 2025)
+- **Issue #17**: Fixed jq parsing errors in pattern analysis
+  - Corrected check-event-triggers bug (`.themes` → `.patterns`)
+  - Standardized all analysis outputs to `{findings: [array]}` format
+- **Workflow Reorganization**: Created `tools/workflow/` directory
+  - Moved review-findings from analyze/ to workflow/
+  - Updated all references throughout codebase
+- **stdin Redirection Fix**: Fixed user input not being read
+  - Added `< /dev/tty` to read commands in nested loops
+  - Added interactive mode check to prevent piped input
 
 ## Recent Milestones
 

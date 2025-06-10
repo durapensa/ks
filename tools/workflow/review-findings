@@ -58,28 +58,54 @@ display_finding() {
     local confidence=$(echo "$finding" | jq -r '.confidence // .frequency // "N/A"')
     local context=$(echo "$finding" | jq -r '.context // .supporting_quotes // ""')
     
-    # Build display content from available fields
-    if [[ -n "$name" ]] && [[ "$name" != "null" ]]; then
-        content="$name"
+    # Pattern-specific fields
+    local pattern=$(echo "$finding" | jq -r '.pattern // ""')
+    local occurrences=$(echo "$finding" | jq -r '.occurrences // ""')
+    local examples=$(echo "$finding" | jq -r '.examples // ""')
+    
+    # Handle pattern-specific display
+    if [[ -n "$pattern" ]] && [[ "$pattern" != "null" ]] && [[ "$pattern" != "" ]]; then
+        # This is a pattern finding
+        echo -e "${BOLD}Pattern:${NC} $pattern"
+        
         if [[ -n "$description" ]] && [[ "$description" != "null" ]]; then
-            content="$content: $description"
+            echo -e "${BOLD}Description:${NC} $description"
         fi
-    fi
-    
-    echo -e "${BOLD}Type:${NC} $type"
-    if [[ "$confidence" != "N/A" ]]; then
-        echo -e "${BOLD}Confidence:${NC} $confidence"
-    fi
-    
-    echo -e "\n${BOLD}Content:${NC}"
-    echo "$content" | fold -s -w 70 | sed 's/^/  /'
-    
-    if [[ -n "$context" ]] && [[ "$context" != "null" ]] && [[ "$context" != "[]" ]]; then
-        echo -e "\n${BOLD}Supporting Evidence:${NC}"
-        if echo "$context" | jq -e '. | type == "array"' >/dev/null 2>&1; then
-            echo "$context" | jq -r '.[]' | sed 's/^/  • /'
-        else
-            echo "$context" | fold -s -w 70 | sed 's/^/  /'
+        
+        if [[ -n "$occurrences" ]] && [[ "$occurrences" != "null" ]] && [[ "$occurrences" != "" ]]; then
+            echo -e "${BOLD}Occurrences:${NC} $occurrences"
+        fi
+        
+        if [[ -n "$examples" ]] && [[ "$examples" != "null" ]] && [[ "$examples" != "[]" ]] && [[ "$examples" != "" ]]; then
+            echo -e "\n${BOLD}Examples:${NC}"
+            if echo "$examples" | jq -e '. | type == "array"' >/dev/null 2>&1; then
+                echo "$examples" | jq -r '.[]' | sed 's/^/  • /'
+            fi
+        fi
+    else
+        # Default display for non-pattern findings
+        if [[ -n "$name" ]] && [[ "$name" != "null" ]]; then
+            content="$name"
+            if [[ -n "$description" ]] && [[ "$description" != "null" ]]; then
+                content="$content: $description"
+            fi
+        fi
+        
+        echo -e "${BOLD}Type:${NC} $type"
+        if [[ "$confidence" != "N/A" ]]; then
+            echo -e "${BOLD}Confidence:${NC} $confidence"
+        fi
+        
+        echo -e "\n${BOLD}Content:${NC}"
+        echo "$content" | fold -s -w 70 | sed 's/^/  /'
+        
+        if [[ -n "$context" ]] && [[ "$context" != "null" ]] && [[ "$context" != "[]" ]]; then
+            echo -e "\n${BOLD}Supporting Evidence:${NC}"
+            if echo "$context" | jq -e '. | type == "array"' >/dev/null 2>&1; then
+                echo "$context" | jq -r '.[]' | sed 's/^/  • /'
+            else
+                echo "$context" | fold -s -w 70 | sed 's/^/  /'
+            fi
         fi
     fi
     
@@ -109,9 +135,20 @@ integrate_finding() {
     local name=$(echo "$finding" | jq -r '.name // ""')
     local description=$(echo "$finding" | jq -r '.description // ""')
     local content=$(echo "$finding" | jq -r '.content // .theme // .insight // .pattern // ""')
+    local pattern=$(echo "$finding" | jq -r '.pattern // ""')
+    local occurrences=$(echo "$finding" | jq -r '.occurrences // ""')
     
     # Build content from available fields
-    if [[ -n "$name" ]] && [[ "$name" != "null" ]]; then
+    if [[ -n "$pattern" ]] && [[ "$pattern" != "null" ]] && [[ "$pattern" != "" ]]; then
+        # Pattern finding
+        content="Pattern: $pattern"
+        if [[ -n "$description" ]] && [[ "$description" != "null" ]]; then
+            content="$content - $description"
+        fi
+        if [[ -n "$occurrences" ]] && [[ "$occurrences" != "null" ]] && [[ "$occurrences" != "" ]]; then
+            content="$content (${occurrences} occurrences)"
+        fi
+    elif [[ -n "$name" ]] && [[ "$name" != "null" ]]; then
         content="$name"
         if [[ -n "$description" ]] && [[ "$description" != "null" ]]; then
             content="$content: $description"
@@ -122,8 +159,8 @@ integrate_finding() {
     
     local metadata=$(echo "$finding" | jq -c '{source: "background-analysis", approved_at: now | strftime("%Y-%m-%dT%H:%M:%SZ")}')
     
-    # Create the event
-    local event=$(jq -n \
+    # Create the event (compact format for JSONL)
+    local event=$(jq -nc \
         --arg content "$content" \
         --arg type "$event_type" \
         --arg timestamp "$(ks_timestamp)" \
@@ -189,7 +226,7 @@ review_analysis() {
         # Get user decision
         while true; do
             echo -ne "\n${BOLD}Approve this finding? (y/n/q):${NC} "
-            read -r response
+            read -r response < /dev/tty
             
             case "$response" in
                 [yY])
@@ -278,6 +315,12 @@ get_analysis_preview() {
 
 # Main review loop
 main_review() {
+    # Check if running interactively
+    if [ ! -t 0 ] || [ ! -t 1 ]; then
+        echo "Error: This tool must be run interactively, not with piped input." >&2
+        echo "Please run directly in your terminal: $0" >&2
+        exit 1
+    fi
     # Check for pending analyses
     local pending=$(ks_queue_list_pending)
     
@@ -308,7 +351,7 @@ main_review() {
         
         # Ask if user wants to review this analysis
         echo -ne "\nReview this analysis now? (y/n): "
-        read -r response
+        read -r response < /dev/tty
         
         case "$response" in
             [yY])

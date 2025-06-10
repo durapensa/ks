@@ -12,7 +12,7 @@ source "$KS_ROOT/lib/core.sh"      # For ks_timestamp
 source "$KS_ROOT/lib/events.sh"    # For ks_validate_event_type
 
 # Background results check removed to avoid interrupting capture flow
-# Use 'tools/analyze/review-findings' to review completed analyses
+# Use 'tools/workflow/review-findings' to review completed analyses
 
 # HOT_LOG path comes from .ks-env
 # Directory creation handled by ks_ensure_dirs in .ks-env

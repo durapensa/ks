@@ -141,10 +141,10 @@ When notified of pending analyses:
 
 ```bash
 # Run in a separate terminal
-tools/analyze/review-findings
+tools/workflow/review-findings
 
 # List pending analyses without reviewing
-tools/analyze/review-findings --list
+tools/workflow/review-findings --list
 ```
 
 The review process:

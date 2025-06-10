@@ -99,7 +99,7 @@ ks_check_background_results() {
     jq -r '.[] | "  • \(.type) - completed at \(.value.completed_at)"' <<< "$pending"
     
     echo ""
-    echo "Run 'tools/analyze/review-findings' in a separate terminal to review."
+    echo "Run 'tools/workflow/review-findings' in a separate terminal to review."
     echo "============================================"
     echo ""
     

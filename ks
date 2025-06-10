@@ -19,7 +19,7 @@ if [[ -f "$SCRIPT_DIR/.ks-env" ]]; then
         if [[ "$pending" != "[]" ]]; then
             count=$(echo "$pending" | jq -r 'length' 2>/dev/null || echo "0")
             if [[ "$count" -gt 0 ]]; then
-                echo "📋 $count analysis/analyses ready for review (tools/analyze/review-findings)"
+                echo "📋 $count analysis/analyses ready for review (tools/workflow/review-findings)"
                 echo ""
             fi
         fi
