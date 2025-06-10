@@ -55,4 +55,4 @@ jq -nc \
 echo "Event logged: $TYPE/$TOPIC"
 
 # Check event triggers for background analyses
-tools/plumbing/check-event-triggers silent &
+$KS_TOOLS_DIR/plumbing/check-event-triggers silent &

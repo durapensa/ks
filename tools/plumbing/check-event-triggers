@@ -79,7 +79,7 @@ spawn_theme_analysis() {
     
     (
         # Run analysis with JSON output, wrapping in findings array
-        local tool_path="${0%/*}/../analyze/extract-themes"
+        local tool_path="$KS_TOOLS_DIR/analyze/extract-themes"
         local raw_output=$("$tool_path" --days 3 --format json 2>/dev/null)
         
         if [[ -n "$raw_output" ]]; then
@@ -109,7 +109,7 @@ spawn_connection_analysis() {
     
     (
         # Run analysis with JSON output, wrapping in findings array
-        local tool_path="${0%/*}/../analyze/find-connections"
+        local tool_path="$KS_TOOLS_DIR/analyze/find-connections"
         local raw_output=$("$tool_path" --days 7 --format json 2>/dev/null)
         
         if [[ -n "$raw_output" ]]; then
@@ -142,7 +142,7 @@ spawn_pattern_analysis() {
         ks_collect_files
         
         if [[ ${#FILES_TO_PROCESS[@]} -gt 0 ]]; then
-            local tool_path="${0%/*}/../analyze/identify-recurring-thought-patterns"
+            local tool_path="$KS_TOOLS_DIR/analyze/identify-recurring-thought-patterns"
             local raw_output=$(cat "${FILES_TO_PROCESS[@]}" | "$tool_path" --days 14 --format json 2>/dev/null)
             
             if [[ -n "$raw_output" ]]; then

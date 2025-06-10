@@ -69,7 +69,7 @@ fi
 
 # Validate JSONL format before rotation
 echo "Validating JSONL format..."
-if ! "$(dirname "$0")/../utils/validate-jsonl" "$KS_HOT_LOG" >/dev/null 2>&1; then
+if ! "$KS_TOOLS_DIR/utils/validate-jsonl" "$KS_HOT_LOG" >/dev/null 2>&1; then
     echo "ERROR: Hot log has invalid JSONL format. Please fix before rotating." >&2
     echo "Run: tools/utils/validate-jsonl $KS_HOT_LOG" >&2
     exit 1
