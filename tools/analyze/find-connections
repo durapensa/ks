@@ -1,91 +1,92 @@
 #!/usr/bin/env bash
 
 # find-connections - Find conceptual connections between knowledge events
-# Usage: find-connections [options]
 
 set -euo pipefail
 
 # Source configuration and modular libraries
 source "${0%/*}/../../.ks-env"
-source "$KS_ROOT/lib/core.sh"      # For ks_validate_days, ks_timestamp (used by queue)
-source "$KS_ROOT/lib/files.sh"     # For ks_collect_files
-source "$KS_ROOT/tools/lib/queue.sh"     # For ks_check_background_results
-source "$KS_ROOT/tools/lib/claude.sh"    # For ks_claude_analyze, ks_format_analysis
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/files.sh"
+source "$KS_ROOT/lib/time.sh"
+source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/tools/lib/queue.sh"
+source "$KS_ROOT/tools/lib/claude.sh"
+
+# Usage function
+usage() {
+    echo "Usage: find-connections [options]"
+    echo ""
+    echo "Options:"
+    echo "  --topic TOPIC    Filter by specific topic"
+    echo "  --days N         Analyze events from last N days (default: 30)"
+    echo "  --since DATE     Analyze events since ISO date (overrides --days)"
+    echo "  --format FORMAT  Output format: text, json, markdown (default: text)"
+    echo "  -h, --help       Show this help message"
+    echo ""
+    echo "Find conceptual connections between knowledge events using AI analysis"
+}
 
 # Check for background analysis results
 ks_check_background_results || true
 
 # Default values
+DAYS="30"
+SINCE=""
 TOPIC_FILTER=""
 FORMAT="text"
-DAYS=30
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --topic)
+# Parse arguments using GNU getopt
+PARSED=$(ks_parse_options "find-connections" "d:s:t:f:" "days:,since:,topic:,format:" "$@") || {
+    usage >&2
+    exit 1
+}
+
+eval set -- "$PARSED"
+
+# Process options
+while true; do
+    case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -d|--days)
+            ks_handle_days "$2"
+            shift 2
+            ;;
+        -s|--since)
+            ks_handle_since "$2"
+            shift 2
+            ;;
+        -t|--topic)
             TOPIC_FILTER="$2"
             shift 2
             ;;
-        --format)
-            FORMAT="$2"
+        -f|--format)
+            ks_handle_format "$2"
             shift 2
             ;;
-        --days)
-            DAYS="$2"
-            shift 2
-            ;;
-        --help|-h)
-            echo "Usage: find-connections [options]"
-            echo ""
-            echo "Options:"
-            echo "  --topic TOPIC    Filter by specific topic"
-            echo "  --days N         Analyze events from last N days (default: 30)"
-            echo "  --format FORMAT  Output format: text, json, markdown (default: text)"
-            echo ""
-            echo "Find conceptual connections between knowledge events using AI analysis"
-            exit 0
+        --)
+            shift
+            break
             ;;
         *)
-            echo "Unknown option: $1" >&2
-            echo "Use --help for usage information" >&2
-            exit 1
+            ks_unknown_option "$1"
             ;;
     esac
 done
 
-# Validate --days parameter
-ks_validate_days "$DAYS" || exit 1
+# Extract events and analyze
+CONTENT=$(ks_extract_events "$DAYS" "$SINCE" "$(ks_build_filter "" "$TOPIC_FILTER")")
 
-# Calculate date range
-SINCE_DATE=$(date -u -d "${DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)
-
-# Build filter
-FILTER="."
-if [[ -n "$TOPIC_FILTER" ]]; then
-    FILTER="$FILTER | select(.topic == \"$TOPIC_FILTER\")"
-fi
-
-# Collect events from hot log and archives using shared function
-EVENTS=""
-
-# Use shared file collection function
-ks_collect_files
-
-# Process all files in single jq call if any files exist
-if [[ ${#FILES_TO_PROCESS[@]} -gt 0 ]]; then
-    EVENTS=$(jq -r --arg since_date "$SINCE_DATE" "$FILTER | select(.ts >= \$since_date) | \"\(.topic): \(.content)\"" "${FILES_TO_PROCESS[@]}" 2>/dev/null | grep -v '^$' || true)
-fi
-
-if [[ -z "$EVENTS" ]]; then
+if [[ -z "$CONTENT" ]]; then
     echo "No events found${TOPIC_FILTER:+ for topic '$TOPIC_FILTER'} in the last $DAYS days"
     exit 0
 fi
 
 # Get analysis from Claude using modular function
-ANALYSIS=$(ks_claude_analyze "$KS_PROMPT_CONNECTIONS" <<< "$EVENTS")
+ANALYSIS=$(ks_claude_analyze "$KS_PROMPT_CONNECTIONS" <<< "$CONTENT")
 
 # Format output using modular formatter
-ks_format_analysis "$FORMAT" "$ANALYSIS" "Knowledge Connections" \
-    '.connections[] | "## \(.concepts | join(" ↔ "))\n\n**Relationship:** \(.relationship)\n\n**Strength:** \(.strength)/10\n\n**Evidence:** \(.evidence)\n"' \
-    '.connections[] | "CONCEPTS: \(.concepts | join(" <-> "))\nRELATIONSHIP: \(.relationship)\nSTRENGTH: \(.strength)/10\nEVIDENCE: \(.evidence)\n"'
+ks_format_analysis "$ANALYSIS" "$FORMAT" "Knowledge Connections"

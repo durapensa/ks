@@ -1,90 +1,137 @@
 #!/usr/bin/env bash
 
 # kq (knowledge-query) - Search across events and knowledge
-# Usage: kq <search_term> [--type <type>] [--topic <topic>] [--since <date>]
 
 set -euo pipefail
 
 # Source configuration and modular libraries
 source "${0%/*}/../../.ks-env"
-source "$KS_ROOT/lib/core.sh"      # For ks_timestamp (used by queue)
-source "$KS_ROOT/lib/files.sh"     # For ks_collect_files
-source "$KS_ROOT/tools/lib/queue.sh"     # For ks_check_background_results
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/files.sh"
+source "$KS_ROOT/lib/time.sh"
+source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/tools/lib/queue.sh"
+
+# Usage function
+usage() {
+    echo "Usage: kq <search_term> [options]"
+    echo ""
+    echo "Options:"
+    echo "  --type TYPE      Filter by event type"
+    echo "  --topic TOPIC    Filter by topic"
+    echo "  --days N         Search events from last N days"
+    echo "  --since DATE     Search events since ISO date (overrides --days)"
+    echo "  -h, --help       Show this help message"
+    echo ""
+    echo "Search across knowledge events for matching content"
+}
 
 # Check for background analysis results
 ks_check_background_results || true
 
-# All paths come from .ks-env
-
-# Parse arguments
+# Default values
 SEARCH_TERM=""
 TYPE_FILTER=""
 TOPIC_FILTER=""
-SINCE_FILTER=""
+DAYS=""
+SINCE=""
 
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --type)
+# First check for help or if no arguments
+if [[ $# -eq 0 ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+# Extract search term (first non-option argument)
+TEMP_ARGS=()
+for arg in "$@"; do
+    if [[ "$arg" != --* ]] && [[ "$arg" != -* ]]; then
+        if [[ -z "$SEARCH_TERM" ]]; then
+            SEARCH_TERM="$arg"
+        else
+            TEMP_ARGS+=("$arg")
+        fi
+    else
+        TEMP_ARGS+=("$arg")
+    fi
+done
+
+if [[ -z "$SEARCH_TERM" ]]; then
+    echo "Error: Search term is required" >&2
+    usage >&2
+    exit 1
+fi
+
+# Parse remaining arguments using GNU getopt
+PARSED=$(ks_parse_options "kq" "d:s:t:T:" "days:,since:,type:,topic:" "${TEMP_ARGS[@]}") || {
+    usage >&2
+    exit 1
+}
+
+eval set -- "$PARSED"
+
+# Process options
+while true; do
+    case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -d|--days)
+            ks_handle_days "$2"
+            shift 2
+            ;;
+        -s|--since)
+            ks_handle_since "$2"
+            shift 2
+            ;;
+        -t|--type)
             TYPE_FILTER="$2"
             shift 2
             ;;
-        --topic)
+        -T|--topic)
             TOPIC_FILTER="$2"
             shift 2
             ;;
-        --since)
-            SINCE_FILTER="$2"
-            shift 2
+        --)
+            shift
+            break
             ;;
         *)
-            if [[ -z "$SEARCH_TERM" ]]; then
-                SEARCH_TERM="$1"
-            else
-                echo "Unknown option: $1" >&2
-                exit 1
-            fi
-            shift
+            ks_unknown_option "$1"
             ;;
     esac
 done
 
-if [[ -z "$SEARCH_TERM" ]]; then
-    echo "Usage: kq <search_term> [--type <type>] [--topic <topic>] [--since <date>]" >&2
-    exit 1
+# Get filter date if time filtering is requested
+filter_date=""
+if [[ -n "$DAYS" ]] || [[ -n "$SINCE" ]]; then
+    filter_date=$(ks_get_filter_date "$DAYS" "$SINCE")
 fi
 
 # Build jq filter
 JQ_FILTER="."
+
+if [[ -n "$filter_date" ]]; then
+    JQ_FILTER="$JQ_FILTER | select(.ts >= \"$filter_date\")"
+fi
 
 if [[ -n "$TYPE_FILTER" ]]; then
     JQ_FILTER="$JQ_FILTER | select(.type == \"$TYPE_FILTER\")"
 fi
 
 if [[ -n "$TOPIC_FILTER" ]]; then
-    JQ_FILTER="$JQ_FILTER | select(.topic == \"$TOPIC_FILTER\")"
+    JQ_FILTER="$JQ_FILTER | select(.metadata.topic == \"$TOPIC_FILTER\")"
 fi
 
-if [[ -n "$SINCE_FILTER" ]]; then
-    JQ_FILTER="$JQ_FILTER | select(.ts >= \"$SINCE_FILTER\")"
-fi
-
-# Use shared file collection function for consistent processing
-ks_collect_files
-
-# Filter files by date if --since was provided
-if [[ -n "$SINCE_FILTER" ]]; then
-    # For date filtering, we need to check each file's content
-    FILTERED_FILES=()
-    for file in "${FILES_TO_PROCESS[@]}"; do
-        # Check if file contains any events after the since date
-        if jq -e --arg since "$SINCE_FILTER" 'select(.ts >= $since) | true' "$file" >/dev/null 2>&1; then
-            FILTERED_FILES+=("$file")
-        fi
-    done
-    FILES_TO_PROCESS=("${FILTERED_FILES[@]}")
+# Collect files
+if [[ -n "$filter_date" ]]; then
+    ks_collect_files_since "$filter_date"
+else
+    ks_collect_files
 fi
 
 # Perform search with single jq call if files exist
 if [[ ${#FILES_TO_PROCESS[@]} -gt 0 ]]; then
-    jq -r --arg search_term "$SEARCH_TERM" "$JQ_FILTER | select(.content | test(\$search_term; \"i\")) | \"\(.ts) [\(.type)/\(.topic)] \(.content)\"" "${FILES_TO_PROCESS[@]}" 2>/dev/null || true
+    jq -r --arg search_term "$SEARCH_TERM" "$JQ_FILTER | select(.thought // .observation // .question // .content // \"\" | test(\$search_term; \"i\")) | \"\(.ts) [\(.type)/\(.metadata.topic // \"none\")] \(.thought // .observation // .question // .content // \"empty\")\"" "${FILES_TO_PROCESS[@]}" 2>/dev/null || true
 fi

@@ -61,36 +61,60 @@ ks_claude_analyze() {
 
 ks_format_analysis() {
     # Format analysis JSON output based on requested format
-    # Usage: ks_format_analysis <format> <json_data> <title> <jq_markdown> <jq_text>
-    # Example: ks_format_analysis "$FORMAT" "$ANALYSIS" "Knowledge Themes" '.themes[]...' '.themes[]...'
+    # Usage: ks_format_analysis <json_data> <format> <title>
     
-    local format="$1"
-    local json_data="$2"
+    local json_data="$1"
+    local format="$2"
     local title="$3"
-    local jq_markdown="$4"
-    local jq_text="$5"
     
     case "$format" in
         json)
             echo "$json_data"
             ;;
         markdown)
-            echo "# $title Analysis"
+            echo "# $title"
             echo ""
             echo "_Generated at $(date -u '+%Y-%m-%d %H:%M UTC')_"
             echo ""
-            jq -r "$jq_markdown" <<< "$json_data"
+            
+            # Try to parse as JSON and format appropriately
+            if jq -e . >/dev/null 2>&1 <<< "$json_data"; then
+                # Auto-detect content type and format
+                if jq -e '.themes' >/dev/null 2>&1 <<< "$json_data"; then
+                    jq -r '.themes[] | "## \(.name)\n\n\(.description)\n\n**Frequency:** \(.frequency)/10\n\n### Supporting Evidence:\n\(.supporting_quotes | map("- \"\(.)\"") | join("\n"))\n"' <<< "$json_data" 2>/dev/null
+                elif jq -e '.connections' >/dev/null 2>&1 <<< "$json_data"; then
+                    jq -r '.connections[] | "## \(.concepts | join(" ↔ "))\n\n**Relationship:** \(.relationship)\n\n**Strength:** \(.strength)/10\n\n**Evidence:** \(.evidence)\n"' <<< "$json_data" 2>/dev/null
+                elif jq -e '.patterns' >/dev/null 2>&1 <<< "$json_data"; then
+                    jq -r '.patterns[] | "## \(.pattern)\n\n\(.description)\n\n**Occurrences:** \(.occurrences)\n\n### Examples:\n\(.examples | map("- \"\(.)\"") | join("\n"))\n"' <<< "$json_data" 2>/dev/null
+                else
+                    echo "$json_data"
+                fi
+            else
+                # Not JSON, just output as-is
+                echo "$json_data"
+            fi
             ;;
         text|*)
             # Use bash parameter expansion for uppercase conversion
-            echo "=== ${title^^} ANALYSIS ==="
+            echo "=== ${title^^} ==="
             echo "Generated at $(date -u '+%Y-%m-%d %H:%M UTC')"
             echo ""
-            # Check for null before trying to iterate
+            
+            # Try to parse as JSON and format appropriately
             if jq -e . >/dev/null 2>&1 <<< "$json_data"; then
-                jq -r "$jq_text" 2>/dev/null <<< "$json_data" || echo "No data to display"
+                # Auto-detect content type and format
+                if jq -e '.themes' >/dev/null 2>&1 <<< "$json_data"; then
+                    jq -r '.themes[] | "THEME: \(.name)\n\(.description)\nFrequency: \(.frequency)/10\nEvidence:\n\(.supporting_quotes | map("  - \"\(.)\"") | join("\n"))\n"' <<< "$json_data" 2>/dev/null
+                elif jq -e '.connections' >/dev/null 2>&1 <<< "$json_data"; then
+                    jq -r '.connections[] | "CONCEPTS: \(.concepts | join(" <-> "))\nRELATIONSHIP: \(.relationship)\nSTRENGTH: \(.strength)/10\nEVIDENCE: \(.evidence)\n"' <<< "$json_data" 2>/dev/null
+                elif jq -e '.patterns' >/dev/null 2>&1 <<< "$json_data"; then
+                    jq -r '.patterns[] | "PATTERN: \(.pattern)\n\(.description)\nOccurrences: \(.occurrences)\nExamples:\n\(.examples | map("  - \"\(.)\"") | join("\n"))\n"' <<< "$json_data" 2>/dev/null
+                else
+                    echo "$json_data"
+                fi
             else
-                echo "No data to display"
+                # Not JSON, just output as-is
+                echo "$json_data"
             fi
             ;;
     esac

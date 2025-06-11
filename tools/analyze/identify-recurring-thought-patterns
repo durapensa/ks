@@ -6,11 +6,16 @@ set -euo pipefail
 
 # Source environment and modular libraries
 source "${0%/*}/../../.ks-env"
-source "$KS_ROOT/tools/lib/claude.sh"    # For ks_claude_analyze, ks_format_analysis
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/time.sh"
+source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/tools/lib/claude.sh"
 
 # Default configuration
-TIME_WINDOW_DAYS="${TIME_WINDOW_DAYS:-3}"
+DAYS="3"
+SINCE=""
 FORMAT="text"
+RAW_INPUT=false
 
 # Usage
 usage() {
@@ -21,10 +26,11 @@ Identify recurring thought patterns and themes from knowledge entries.
 Reads event content from stdin, outputs analysis to stdout.
 
 Options:
-  --days N          Filter to last N days (default: $TIME_WINDOW_DAYS)
+  --days N          Filter to last N days (default: 3)
+  --since DATE      Filter since ISO date (overrides --days)
   --raw             Input is already filtered content (skip date filtering)
   --format FORMAT   Output format: text, json (default: text)
-  --help            Show this help message
+  -h, --help        Show this help message
 
 Input format:
   - JSONL events (default) - will extract .content field
@@ -38,30 +44,43 @@ Example:
 EOF
 }
 
-# Parse arguments
-RAW_INPUT=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --days)
-            TIME_WINDOW_DAYS="$2"
-            shift 2
-            ;;
-        --raw)
-            RAW_INPUT=true
-            shift
-            ;;
-        --format)
-            FORMAT="$2"
-            shift 2
-            ;;
-        --help|-h)
+# Parse arguments using GNU getopt
+PARSED=$(ks_parse_options "${0##*/}" "d:s:rf:" "days:,since:,raw,format:" "$@") || {
+    usage >&2
+    exit 1
+}
+
+eval set -- "$PARSED"
+
+# Process options
+while true; do
+    case "$1" in
+        -h|--help)
             usage
             exit 0
             ;;
+        -d|--days)
+            ks_handle_days "$2"
+            shift 2
+            ;;
+        -s|--since)
+            ks_handle_since "$2"
+            shift 2
+            ;;
+        -r|--raw)
+            RAW_INPUT=true
+            shift
+            ;;
+        -f|--format)
+            ks_handle_format "$2"
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
         *)
-            echo "Unknown option: $1" >&2
-            usage >&2
-            exit 1
+            ks_unknown_option "$1"
             ;;
     esac
 done
@@ -73,9 +92,9 @@ if [[ "$RAW_INPUT" == "true" ]]; then
     cat > "$input_file"
 else
     # Input is JSONL events, extract content from time window
-    since_date=$(date -u -d "$TIME_WINDOW_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
-    jq -r --arg since_date "$since_date" \
-        'select(.ts >= $since_date) | .content' > "$input_file"
+    filter_date=$(ks_get_filter_date "$DAYS" "$SINCE")
+    jq -r --arg filter_date "$filter_date" \
+        'select(.ts >= $filter_date) | .content' > "$input_file"
 fi
 
 # Check if we have any content
@@ -91,6 +110,4 @@ ANALYSIS=$(ks_claude_analyze "$KS_PROMPT_PATTERNS" < "$input_file")
 rm -f "$input_file"
 
 # Format output using modular formatter
-ks_format_analysis "$FORMAT" "$ANALYSIS" "Recurring Thought Patterns" \
-    '.patterns[] | "## \(.pattern)\n\n\(.description)\n\n**Occurrences:** \(.occurrences)\n\n### Examples:\n\(.examples | map("- \"\(.)\"") | join("\n"))\n"' \
-    '.patterns[] | "PATTERN: \(.pattern)\n\(.description)\nOccurrences: \(.occurrences)\nExamples:\n\(.examples | map("  - \"\(.)\"") | join("\n"))\n"'
+ks_format_analysis "$ANALYSIS" "$FORMAT" "Recurring Thought Patterns"
