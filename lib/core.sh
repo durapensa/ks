@@ -11,7 +11,7 @@ ks_ensure_dirs() {
 
 ks_timestamp() {
     # Generate UTC timestamp in ISO format
-    date -u '+%Y-%m-%dT%H:%M:%SZ'
+    $KS_DATE -u '+%Y-%m-%dT%H:%M:%SZ'
 }
 
 ks_sanitize_string() {

@@ -14,17 +14,19 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     SOURCED=1
 fi
 
-# On macOS, ensure GNU tools are in PATH for this script
-if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then
-    # Add GNU getopt to PATH for option parsing
-    export PATH="$(brew --prefix)/opt/gnu-getopt/bin:$PATH"
-fi
-
 # Parse command line arguments only when executed (not sourced)
 SETUP_GO=0
 if [[ $SOURCED -eq 0 ]] && [[ $# -gt 0 ]]; then
-    # Use GNU getopt (will be available after first setup.sh run)
-    TEMP=$(getopt -o g --long go -n 'setup.sh' -- "$@")
+    # Use GNU getopt with full path on macOS to avoid PATH manipulation
+    local getopt_cmd="getopt"
+    if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then
+        local gnu_getopt_path="$(brew --prefix)/opt/gnu-getopt/bin/getopt"
+        if [[ -x "$gnu_getopt_path" ]]; then
+            getopt_cmd="$gnu_getopt_path"
+        fi
+    fi
+    
+    TEMP=$($getopt_cmd -o g --long go -n 'setup.sh' -- "$@")
     if [ $? != 0 ]; then
         echo "Error: Invalid options"
         echo "Usage: ./setup.sh        # Basic setup"
@@ -207,16 +209,10 @@ esac
 
 # Check and update configuration
 KS_CONFIGURED=0
-GNU_TOOLS_CONFIGURED=0
 
 if rg -q "KS_ROOT=" "$SHELL_CONFIG" 2>/dev/null; then
     KS_CONFIGURED=1
-    echo "Knowledge System basic configuration found in $SHELL_CONFIG"
-fi
-
-if rg -q "coreutils/libexec/gnubin" "$SHELL_CONFIG" 2>/dev/null; then
-    GNU_TOOLS_CONFIGURED=1
-    echo "GNU tools PATH configuration found in $SHELL_CONFIG"
+    echo "Knowledge System configuration found in $SHELL_CONFIG"
 fi
 
 # Add basic KS configuration if not present
@@ -229,25 +225,9 @@ if [[ $KS_CONFIGURED -eq 0 ]]; then
     echo "✓ Added basic Knowledge System configuration to $SHELL_CONFIG"
 fi
 
-# Add GNU tools PATH configuration on macOS if not present
-if [[ "$OSTYPE" == "darwin"* && $GNU_TOOLS_CONFIGURED -eq 0 ]]; then
-    echo "" >> "$SHELL_CONFIG"
-    echo "# Prefer GNU tools on macOS for Knowledge System compatibility" >> "$SHELL_CONFIG"
-    echo "if command -v brew >/dev/null 2>&1; then" >> "$SHELL_CONFIG"
-    echo "    # Add GNU coreutils to PATH (for gdate, gstat, etc.)" >> "$SHELL_CONFIG"
-    echo "    export PATH=\"\$(brew --prefix)/opt/coreutils/libexec/gnubin:\$PATH\"" >> "$SHELL_CONFIG"
-    echo "    # Add GNU findutils to PATH (for gfind, etc.)" >> "$SHELL_CONFIG"
-    echo "    export PATH=\"\$(brew --prefix)/opt/findutils/libexec/gnubin:\$PATH\"" >> "$SHELL_CONFIG"
-    echo "    # Add util-linux to PATH (for flock)" >> "$SHELL_CONFIG"
-    echo "    export PATH=\"\$(brew --prefix)/opt/util-linux/bin:\$PATH\"" >> "$SHELL_CONFIG"
-    echo "    # Add GNU getopt to PATH (for portable option parsing)" >> "$SHELL_CONFIG"
-    echo "    export PATH=\"\$(brew --prefix)/opt/gnu-getopt/bin:\$PATH\"" >> "$SHELL_CONFIG"
-    echo "fi" >> "$SHELL_CONFIG"
-    echo "✓ Added GNU tools PATH configuration to $SHELL_CONFIG"
-fi
 
-if [[ $KS_CONFIGURED -eq 1 && $GNU_TOOLS_CONFIGURED -eq 1 ]]; then
-    echo "Knowledge System fully configured in $SHELL_CONFIG"
+if [[ $KS_CONFIGURED -eq 1 ]]; then
+    echo "Knowledge System configuration already present in $SHELL_CONFIG"
 fi
 
 # Go setup function
@@ -303,17 +283,6 @@ if [[ $SOURCED -eq 1 ]]; then
     alias ks="$KS_ROOT/ks"
     alias ksd="$KS_ROOT/ksd"
     
-    # On macOS, prefer GNU tools for better compatibility
-    if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then
-        # Add GNU coreutils to PATH (for gdate, gstat, etc.)
-        export PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$PATH"
-        # Add GNU findutils to PATH (for gfind, etc.)
-        export PATH="$(brew --prefix)/opt/findutils/libexec/gnubin:$PATH"
-        # Add util-linux to PATH (for flock)
-        export PATH="$(brew --prefix)/opt/util-linux/bin:$PATH"
-        # Add GNU getopt to PATH (for portable option parsing)
-        export PATH="$(brew --prefix)/opt/gnu-getopt/bin:$PATH"
-    fi
     
     echo ""
     echo "✓ Knowledge System setup complete and active in current shell!"

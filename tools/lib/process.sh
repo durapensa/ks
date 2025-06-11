@@ -15,7 +15,7 @@ ks_acquire_background_lock() {
     
     # Check if lock exists and is recent
     if [[ -f "$lock_file" ]]; then
-        local lock_age=$(( EPOCHSECONDS - $(stat -c %Y "$lock_file" 2>/dev/null || stat -f %m "$lock_file" 2>/dev/null || echo 0) ))
+        local lock_age=$(( EPOCHSECONDS - $($KS_STAT -c %Y "$lock_file" 2>/dev/null || echo 0) ))
         
         if [[ "$lock_age" -lt "$lock_timeout" ]]; then
             # Lock is recent, another process is likely running

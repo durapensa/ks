@@ -20,7 +20,20 @@ export KS_ANALYSIS_QUEUE="$KS_BACKGROUND_DIR/analysis_queue.json"
 # Claude model for analysis tools
 export KS_MODEL="${KS_MODEL:-sonnet}"
 
-# Bash 5.x compatibility - provide EPOCHSECONDS if not available
-if [[ -z "${EPOCHSECONDS:-}" ]]; then
-    export EPOCHSECONDS=$(date +%s)
+# Platform-specific command mappings
+# Use GNU tools explicitly to avoid PATH manipulation and ensure consistent behavior
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS with Homebrew GNU tools (g-prefixed to avoid shadowing system commands)
+    export KS_DATE="gdate"
+    export KS_STAT="gstat"
+    export KS_FIND="gfind"
+    export KS_FLOCK="flock"      # from util-linux package
+    export KS_GETOPT="getopt"    # from gnu-getopt package
+else
+    # Linux with native GNU tools
+    export KS_DATE="date"
+    export KS_STAT="stat"
+    export KS_FIND="find"
+    export KS_FLOCK="flock"
+    export KS_GETOPT="getopt"
 fi

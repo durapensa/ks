@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+# Source environment for KS_* variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../.ks-env"
+
 # Check if bats is installed
 if ! command -v bats &> /dev/null; then
     echo "Error: bats-core is not installed"
@@ -22,7 +26,7 @@ export TEST_ROOT=$(dirname "$0")
 echo
 echo "Mocked API Tests:"
 echo "-----------------"
-if [ -d "$TEST_ROOT/mocked" ] && [ -n "$(find "$TEST_ROOT/mocked" -name "*.bats" 2>/dev/null)" ]; then
+if [ -d "$TEST_ROOT/mocked" ] && [ -n "$($KS_FIND "$TEST_ROOT/mocked" -name "*.bats" 2>/dev/null)" ]; then
     bats "$TEST_ROOT"/mocked/*.bats
 else
     echo "No mocked tests found in $TEST_ROOT/mocked/"

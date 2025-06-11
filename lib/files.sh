@@ -20,6 +20,6 @@ ks_collect_files() {
             if [[ -f "$file" && -s "$file" ]]; then
                 FILES_TO_PROCESS+=("$file")
             fi
-        done < <(find "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f -print0 | sort -zr)
+        done < <($KS_FIND "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f -print0 | sort -zr)
     fi
 }

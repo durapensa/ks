@@ -27,7 +27,7 @@ ks_parse_options() {
     
     # Parse options
     local parsed
-    if ! parsed=$(getopt -o "$short_opts" --long "$long_opts" -n "$script_name" -- "$@"); then
+    if ! parsed=$($KS_GETOPT -o "$short_opts" --long "$long_opts" -n "$script_name" -- "$@"); then
         return 1
     fi
     

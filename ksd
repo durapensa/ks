@@ -187,7 +187,7 @@ show_analytics() {
     done | head -5
     
     echo ""
-    echo "Recent (7d): $(jq -r --arg date "$(date -d "7 days ago" +%Y-%m-%d 2>/dev/null || gdate -d "7 days ago" +%Y-%m-%d)" '.timestamp | select(. > $date)' "$KS_HOT_LOG" 2>/dev/null | wc -l | tr -d ' ') events"
+    echo "Recent (7d): $(jq -r --arg date "$($KS_DATE -d "7 days ago" +%Y-%m-%d)" '.timestamp | select(. > $date)' "$KS_HOT_LOG" 2>/dev/null | wc -l | tr -d ' ') events"
 }
 
 # Non-interactive status mode

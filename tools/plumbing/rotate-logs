@@ -65,7 +65,7 @@ should_rotate() {
     fi
     
     # Check file size
-    local file_size=$(stat -c%s "$KS_HOT_LOG" 2>/dev/null || echo 0)
+    local file_size=$($KS_STAT -c%s "$KS_HOT_LOG" 2>/dev/null || echo 0)
     if [[ "$file_size" -gt "${MAX_SIZE:-$DEFAULT_MAX_SIZE}" ]]; then
         echo "File size ($file_size bytes) exceeds limit (${MAX_SIZE:-$DEFAULT_MAX_SIZE} bytes)"
         return 0
@@ -82,7 +82,7 @@ should_rotate() {
     local first_timestamp=$(head -1 "$KS_HOT_LOG" | jq -r '.ts' 2>/dev/null || echo "")
     if [[ -n "$first_timestamp" ]]; then
         # setup.sh ensures GNU date is available as 'date' on all platforms
-        local first_epoch=$(date -d "$first_timestamp" +%s 2>/dev/null || echo 0)
+        local first_epoch=$($KS_DATE -d "$first_timestamp" +%s 2>/dev/null || echo 0)
         local current_epoch=$EPOCHSECONDS
         local age_hours=$(( (current_epoch - first_epoch) / 3600 ))
         
@@ -99,7 +99,7 @@ should_rotate() {
 LOCK_FILE="${KS_HOT_LOG}.lock"
 exec 200>"$LOCK_FILE"
 
-if ! flock -n 200; then
+if ! $KS_FLOCK -n 200; then
     echo "Another rotation is in progress"
     exit 1
 fi
@@ -112,7 +112,7 @@ if ! should_rotate; then
 fi
 
 # Generate archive filename with "cold-" prefix to match test expectations
-ARCHIVE_FILE="${KS_ARCHIVE_DIR}/cold-$(date +%Y-%m-%d-%H%M%S).jsonl"
+ARCHIVE_FILE="${KS_ARCHIVE_DIR}/cold-$($KS_DATE +%Y-%m-%d-%H%M%S).jsonl"
 
 # Perform rotation
 echo "Rotating $KS_HOT_LOG to $ARCHIVE_FILE"

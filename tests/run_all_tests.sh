@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+# Source environment for KS_* variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../.ks-env"
+
 # Check if bats is installed
 if ! command -v bats &> /dev/null; then
     echo "Error: bats-core is not installed"
@@ -46,7 +50,7 @@ fi
 # Run performance tests
 echo
 echo "=== PERFORMANCE TESTS ==="
-if [ -d "$TEST_ROOT/performance" ] && [ -n "$(find "$TEST_ROOT/performance" -name "*.bats" 2>/dev/null)" ]; then
+if [ -d "$TEST_ROOT/performance" ] && [ -n "$($KS_FIND "$TEST_ROOT/performance" -name "*.bats" 2>/dev/null)" ]; then
     echo "Performance Tests:"
     echo "------------------"
     bats "$TEST_ROOT"/performance/*.bats || PERF_EXIT=$?

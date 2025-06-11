@@ -76,7 +76,7 @@ ks_format_analysis() {
         markdown)
             echo "# $title"
             echo ""
-            echo "_Generated at $(date -u '+%Y-%m-%d %H:%M UTC')_"
+            echo "_Generated at $($KS_DATE -u '+%Y-%m-%d %H:%M UTC')_"
             echo ""
             
             # Try to parse as JSON and format appropriately
@@ -99,7 +99,7 @@ ks_format_analysis() {
         text|*)
             # Use bash parameter expansion for uppercase conversion
             echo "=== ${title^^} ==="
-            echo "Generated at $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "Generated at $($KS_DATE -u '+%Y-%m-%d %H:%M UTC')"
             echo ""
             
             # Try to parse as JSON and format appropriately
