@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# find-connections - Find conceptual connections between knowledge events
+# find-connections - Find connections between knowledge events (declarative version)
 
 set -euo pipefail
 
@@ -13,80 +13,51 @@ source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/claude.sh"
 
-# Usage function
-usage() {
-    echo "Usage: find-connections [options]"
-    echo ""
-    echo "Options:"
-    echo "  --topic TOPIC    Filter by specific topic"
-    echo "  --days N         Analyze events from last N days (default: 30)"
-    echo "  --since DATE     Analyze events since ISO date (overrides --days)"
-    echo "  --format FORMAT  Output format: text, json, markdown (default: text)"
-    echo "  -h, --help       Show this help message"
-    echo ""
-    echo "Find conceptual connections between knowledge events using AI analysis"
-}
+# Define command description
+ks_define_usage "Find non-obvious connections between knowledge events using AI analysis"
 
 # Check for background analysis results
 ks_check_background_results || true
 
-# Default values
-DAYS="30"
-SINCE=""
-TOPIC_FILTER=""
-FORMAT="text"
+# Initialize and define options
+ks_init_options
+ks_example "--days 7"
+ks_example "--topic \"learning\" --format json"
+ks_option "days" "d" "Analyze events from last N days" "7" "ks_handle_days"
+ks_option "since" "s" "Analyze events since ISO date (overrides --days)" "" "ks_handle_since"
+ks_option "type" "t" "Filter by event type" "" ""
+ks_option "topic" "p" "Filter by topic metadata" "" ""
+ks_option "format" "f" "Output format: text, json, markdown" "text" "ks_handle_format"
 
-# Parse arguments using GNU getopt
-PARSED=$(ks_parse_options "find-connections" "d:s:t:f:" "days:,since:,topic:,format:" "$@") || {
-    usage >&2
-    exit 1
-}
-
-eval set -- "$PARSED"
-
-# Process options
-while true; do
-    case "$1" in
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        -d|--days)
-            ks_handle_days "$2"
-            shift 2
-            ;;
-        -s|--since)
-            ks_handle_since "$2"
-            shift 2
-            ;;
-        -t|--topic)
-            TOPIC_FILTER="$2"
-            shift 2
-            ;;
-        -f|--format)
-            ks_handle_format "$2"
-            shift 2
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            ks_unknown_option "$1"
-            ;;
-    esac
-done
+# Process options - this sets DAYS, SINCE, TYPE, TOPIC, FORMAT variables
+ks_process_options "$@"
 
 # Extract events and analyze
-CONTENT=$(ks_extract_events "$DAYS" "$SINCE" "$(ks_build_filter "" "$TOPIC_FILTER")")
+CONTENT=$(ks_extract_events "$DAYS" "$SINCE" "$(ks_build_filter "$TYPE" "$TOPIC")")
 
-if [[ -z "$CONTENT" ]]; then
-    echo "No events found${TOPIC_FILTER:+ for topic '$TOPIC_FILTER'} in the last $DAYS days"
-    exit 0
-fi
+[[ -z "$CONTENT" ]] && { echo "No events found in the last $DAYS days"; exit 0; }
 
-# Get analysis from Claude using modular function
-ANALYSIS=$(ks_claude_analyze "$KS_PROMPT_CONNECTIONS" <<< "$CONTENT")
+# Prepare AI prompt
+PROMPT="Analyze the following knowledge events from the last $DAYS days and find non-obvious connections.
 
-# Format output using modular formatter
-ks_format_analysis "$ANALYSIS" "$FORMAT" "Knowledge Connections"
+$CONTENT
+
+Look for interesting patterns, relationships, or connections between different thoughts and observations. Return ONLY valid JSON in this format:
+{
+  \"connections\": [
+    {
+      \"events\": [\"timestamp1: event1\", \"timestamp2: event2\"],
+      \"relationship\": \"description of connection\",
+      \"insight\": \"what this connection reveals\",
+      \"confidence\": 0.8
+    }
+  ]
+}
+
+If no meaningful connections are found, return: {\"connections\": []}"
+
+# Analyze with Claude
+ANALYSIS=$(ks_claude_analyze "$PROMPT" || echo "Error: Analysis failed")
+
+# Output based on format
+ks_format_analysis "$ANALYSIS" "$FORMAT" "Connection Analysis"

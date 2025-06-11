@@ -74,13 +74,20 @@ check_dependencies() {
     command -v watchexec >/dev/null 2>&1 || missing_deps+=("watchexec")
     command -v sponge >/dev/null 2>&1 || missing_deps+=("moreutils")
     
+    # GNU tools for macOS compatibility
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        command -v gdate >/dev/null 2>&1 || missing_deps+=("coreutils")
+        command -v gfind >/dev/null 2>&1 || missing_deps+=("findutils")
+        command -v flock >/dev/null 2>&1 || missing_deps+=("util-linux")
+    fi
+    
     # Check for modern bash (5.x+)
     # First check if brew's bash is installed (even if not in PATH yet)
     local brew_bash_found=0
     if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then
         local brew_prefix=$(brew --prefix)
         if [[ -x "$brew_prefix/bin/bash" ]]; then
-            local brew_bash_version=$("$brew_prefix/bin/bash" --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+            local brew_bash_version=$("$brew_prefix/bin/bash" --version | head -1 | rg -o '[0-9]+\.[0-9]+' | head -1)
             if [[ "$brew_bash_version" > "4.99" ]]; then
                 brew_bash_found=1
             fi
@@ -89,21 +96,12 @@ check_dependencies() {
     
     # If brew bash not found, check current bash in PATH
     if [[ $brew_bash_found -eq 0 ]]; then
-        local bash_version=$(bash --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+        local bash_version=$(bash --version | head -1 | rg -o '[0-9]+\.[0-9]+' | head -1)
         if [[ ! "$bash_version" > "4.99" ]]; then
             missing_deps+=("bash")
         fi
     fi
     
-    # Check for optional but recommended dependencies
-    command -v flock >/dev/null 2>&1 || missing_deps+=("util-linux")
-    
-    # On macOS, check for GNU coreutils for better compatibility
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        if ! command -v gdate >/dev/null 2>&1; then
-            missing_deps+=("coreutils")
-        fi
-    fi
     
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         echo ""
@@ -211,12 +209,12 @@ esac
 KS_CONFIGURED=0
 GNU_TOOLS_CONFIGURED=0
 
-if grep -q "KS_ROOT=" "$SHELL_CONFIG" 2>/dev/null; then
+if rg -q "KS_ROOT=" "$SHELL_CONFIG" 2>/dev/null; then
     KS_CONFIGURED=1
     echo "Knowledge System basic configuration found in $SHELL_CONFIG"
 fi
 
-if grep -q "coreutils/libexec/gnubin" "$SHELL_CONFIG" 2>/dev/null; then
+if rg -q "coreutils/libexec/gnubin" "$SHELL_CONFIG" 2>/dev/null; then
     GNU_TOOLS_CONFIGURED=1
     echo "GNU tools PATH configuration found in $SHELL_CONFIG"
 fi
@@ -238,6 +236,8 @@ if [[ "$OSTYPE" == "darwin"* && $GNU_TOOLS_CONFIGURED -eq 0 ]]; then
     echo "if command -v brew >/dev/null 2>&1; then" >> "$SHELL_CONFIG"
     echo "    # Add GNU coreutils to PATH (for gdate, gstat, etc.)" >> "$SHELL_CONFIG"
     echo "    export PATH=\"\$(brew --prefix)/opt/coreutils/libexec/gnubin:\$PATH\"" >> "$SHELL_CONFIG"
+    echo "    # Add GNU findutils to PATH (for gfind, etc.)" >> "$SHELL_CONFIG"
+    echo "    export PATH=\"\$(brew --prefix)/opt/findutils/libexec/gnubin:\$PATH\"" >> "$SHELL_CONFIG"
     echo "    # Add util-linux to PATH (for flock)" >> "$SHELL_CONFIG"
     echo "    export PATH=\"\$(brew --prefix)/opt/util-linux/bin:\$PATH\"" >> "$SHELL_CONFIG"
     echo "    # Add GNU getopt to PATH (for portable option parsing)" >> "$SHELL_CONFIG"
@@ -307,6 +307,8 @@ if [[ $SOURCED -eq 1 ]]; then
     if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then
         # Add GNU coreutils to PATH (for gdate, gstat, etc.)
         export PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$PATH"
+        # Add GNU findutils to PATH (for gfind, etc.)
+        export PATH="$(brew --prefix)/opt/findutils/libexec/gnubin:$PATH"
         # Add util-linux to PATH (for flock)
         export PATH="$(brew --prefix)/opt/util-linux/bin:$PATH"
         # Add GNU getopt to PATH (for portable option parsing)

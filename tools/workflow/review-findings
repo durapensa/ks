@@ -79,7 +79,7 @@ display_finding() {
         if [[ -n "$examples" ]] && [[ "$examples" != "null" ]] && [[ "$examples" != "[]" ]] && [[ "$examples" != "" ]]; then
             echo -e "\n${BOLD}Examples:${NC}"
             if echo "$examples" | jq -e '. | type == "array"' >/dev/null 2>&1; then
-                echo "$examples" | jq -r '.[]' | sed 's/^/  • /'
+                echo "$examples" | jq -r '.[]' | sd '^' '  • '
             fi
         fi
     else
@@ -97,14 +97,14 @@ display_finding() {
         fi
         
         echo -e "\n${BOLD}Content:${NC}"
-        echo "$content" | fold -s -w 70 | sed 's/^/  /'
+        echo "$content" | fold -s -w 70 | sd '^' '  '
         
         if [[ -n "$context" ]] && [[ "$context" != "null" ]] && [[ "$context" != "[]" ]]; then
             echo -e "\n${BOLD}Supporting Evidence:${NC}"
             if echo "$context" | jq -e '. | type == "array"' >/dev/null 2>&1; then
-                echo "$context" | jq -r '.[]' | sed 's/^/  • /'
+                echo "$context" | jq -r '.[]' | sd '^' '  • '
             else
-                echo "$context" | fold -s -w 70 | sed 's/^/  /'
+                echo "$context" | fold -s -w 70 | sd '^' '  '
             fi
         fi
     fi
@@ -218,8 +218,8 @@ review_analysis() {
         local findings=""
         local count=0
     else
-        local findings=$(jq -c '.findings[]? // .[]' "$findings_file" 2>/dev/null | grep -v '^null$' || echo "")
-        local count=$(echo "$findings" | grep -c . || echo "0")
+        local findings=$(jq -c '.findings[]? // .[]' "$findings_file" 2>/dev/null | rg -v '^null$' || echo "")
+        local count=$(echo "$findings" | rg -c . || echo "0")
     fi
     
     if [[ -z "$findings" ]] || [[ "$count" -eq 0 ]]; then
@@ -345,8 +345,8 @@ get_analysis_preview() {
         return
     fi
     
-    local findings=$(jq -c '.findings[]? // .[]' "$findings_file" 2>/dev/null | grep -v '^null$' || echo "")
-    local count=$(echo "$findings" | grep -c . || echo "0")
+    local findings=$(jq -c '.findings[]? // .[]' "$findings_file" 2>/dev/null | rg -v '^null$' || echo "")
+    local count=$(echo "$findings" | rg -c . || echo "0")
     
     if [[ "$count" -eq 0 ]]; then
         echo "Empty (no findings)"

@@ -1,41 +1,48 @@
 #!/usr/bin/env bash
 
-# ke (knowledge-event) - Append events to knowledge stream
-# Usage: ke <type> <topic> <content>
-#        echo "content" | ke <type> <topic>
+# events - Append events to knowledge stream
 
 set -euo pipefail
 
 # Source configuration and modular libraries
 source "${0%/*}/../../.ks-env"
-source "$KS_ROOT/lib/core.sh"      # For ks_timestamp
-source "$KS_ROOT/lib/events.sh"    # For ks_validate_event_type
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/events.sh"
+source "$KS_ROOT/lib/argparse.sh"
 
-# Background results check removed to avoid interrupting capture flow
-# Use 'tools/workflow/review-findings' to review completed analyses
+# Define usage
+ks_define_usage "Append events to knowledge stream
 
-# HOT_LOG path comes from .ks-env
-# Directory creation handled by ks_ensure_dirs in .ks-env
+Usage: events <type> <topic> [content]
+       echo 'content' | events <type> <topic>
 
-# Parse arguments
-if [[ $# -lt 2 ]]; then
-    echo "Usage: ke <type> <topic> [content]" >&2
-    echo "       echo 'content' | ke <type> <topic>" >&2
-    echo "" >&2
-    echo "Event types: thought, connection, question, insight, process" >&2
+Event types: thought, connection, question, insight, process"
+
+# Initialize and define examples
+ks_init_options
+ks_example "thought \"learning\" \"Discovered new pattern in data\""
+ks_example "insight \"productivity\" \"Focus blocks work better in morning\""
+
+# Process options
+ks_process_options "$@"
+
+# Get positional arguments
+if [[ ${#REMAINING_ARGS[@]} -lt 2 ]]; then
+    echo "Error: Required arguments missing" >&2
+    usage
     exit 1
 fi
 
-TYPE="$1"
-TOPIC="$2"
+TYPE="${REMAINING_ARGS[0]}"
+TOPIC="${REMAINING_ARGS[1]}"
 CONTENT=""
 
 # Validate event type
 ks_validate_event_type "$TYPE" || exit 1
 
 # Get content from argument or stdin
-if [[ $# -ge 3 ]]; then
-    CONTENT="$3"
+if [[ ${#REMAINING_ARGS[@]} -ge 3 ]]; then
+    CONTENT="${REMAINING_ARGS[2]}"
 else
     CONTENT=$(cat)
 fi

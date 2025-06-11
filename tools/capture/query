@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# kq (knowledge-query) - Search across events and knowledge
+# query - Search and filter knowledge events (declarative version)
 
 set -euo pipefail
 
@@ -10,128 +10,71 @@ source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/files.sh"
 source "$KS_ROOT/lib/time.sh"
 source "$KS_ROOT/lib/argparse.sh"
-source "$KS_ROOT/tools/lib/queue.sh"
 
-# Usage function
-usage() {
-    echo "Usage: kq <search_term> [options]"
-    echo ""
-    echo "Options:"
-    echo "  --type TYPE      Filter by event type"
-    echo "  --topic TOPIC    Filter by topic"
-    echo "  --days N         Search events from last N days"
-    echo "  --since DATE     Search events since ISO date (overrides --days)"
-    echo "  -h, --help       Show this help message"
-    echo ""
-    echo "Search across knowledge events for matching content"
-}
+# Define command description
+ks_define_usage "Search and filter knowledge events
 
-# Check for background analysis results
-ks_check_background_results || true
+Usage: query [options] [search_term]
 
-# Default values
-SEARCH_TERM=""
-TYPE_FILTER=""
-TOPIC_FILTER=""
-DAYS=""
-SINCE=""
+Examples:
+  query memory                  # Search for 'memory' in all events
+  query --days 7 \"learning\"     # Search last 7 days for 'learning'
+  query --type thought --count  # Count all thought events"
 
-# First check for help or if no arguments
-if [[ $# -eq 0 ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
-    usage
-    exit 0
-fi
+# Initialize and define options
+ks_init_options
+ks_example "memory"
+ks_example "--days 7 \"learning\""
+ks_option "days" "d" "Search events from last N days" "" "ks_handle_days"
+ks_option "since" "s" "Search events since ISO date" "" "ks_handle_since"
+ks_option "type" "t" "Filter by event type" "" ""
+ks_option "topic" "p" "Filter by topic metadata" "" ""
+ks_option "limit" "l" "Limit number of results" "20" ""
+ks_option "reverse" "r" "Show oldest events first" "" "" "flag"
+ks_option "count" "c" "Show only count of matching events" "" "" "flag"
 
-# Extract search term (first non-option argument)
-TEMP_ARGS=()
-for arg in "$@"; do
-    if [[ "$arg" != --* ]] && [[ "$arg" != -* ]]; then
-        if [[ -z "$SEARCH_TERM" ]]; then
-            SEARCH_TERM="$arg"
-        else
-            TEMP_ARGS+=("$arg")
-        fi
-    else
-        TEMP_ARGS+=("$arg")
-    fi
-done
+# Process options - this captures remaining args in global array
+REMAINING_ARGS=()
+ks_process_options "$@"
 
-if [[ -z "$SEARCH_TERM" ]]; then
-    echo "Error: Search term is required" >&2
-    usage >&2
-    exit 1
-fi
+# Get the search term from remaining arguments
+SEARCH_TERM="${REMAINING_ARGS[0]:-}"
 
-# Parse remaining arguments using GNU getopt
-PARSED=$(ks_parse_options "kq" "d:s:t:T:" "days:,since:,type:,topic:" "${TEMP_ARGS[@]}") || {
-    usage >&2
-    exit 1
-}
-
-eval set -- "$PARSED"
-
-# Process options
-while true; do
-    case "$1" in
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        -d|--days)
-            ks_handle_days "$2"
-            shift 2
-            ;;
-        -s|--since)
-            ks_handle_since "$2"
-            shift 2
-            ;;
-        -t|--type)
-            TYPE_FILTER="$2"
-            shift 2
-            ;;
-        -T|--topic)
-            TOPIC_FILTER="$2"
-            shift 2
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            ks_unknown_option "$1"
-            ;;
-    esac
-done
-
-# Get filter date if time filtering is requested
-filter_date=""
-if [[ -n "$DAYS" ]] || [[ -n "$SINCE" ]]; then
-    filter_date=$(ks_get_filter_date "$DAYS" "$SINCE")
-fi
-
-# Build jq filter
-JQ_FILTER="."
-
-if [[ -n "$filter_date" ]]; then
-    JQ_FILTER="$JQ_FILTER | select(.ts >= \"$filter_date\")"
-fi
-
-if [[ -n "$TYPE_FILTER" ]]; then
-    JQ_FILTER="$JQ_FILTER | select(.type == \"$TYPE_FILTER\")"
-fi
-
-if [[ -n "$TOPIC_FILTER" ]]; then
-    JQ_FILTER="$JQ_FILTER | select(.metadata.topic == \"$TOPIC_FILTER\")"
-fi
+# Get filter date
+FILTER_DATE=$(ks_get_filter_date "$DAYS" "$SINCE")
 
 # Collect files
-if [[ -n "$filter_date" ]]; then
-    ks_collect_files_since "$filter_date"
-else
-    ks_collect_files
-fi
+ks_collect_files_since "$FILTER_DATE"
 
-# Perform search with single jq call if files exist
-if [[ ${#FILES_TO_PROCESS[@]} -gt 0 ]]; then
-    jq -r --arg search_term "$SEARCH_TERM" "$JQ_FILTER | select(.thought // .observation // .question // .content // \"\" | test(\$search_term; \"i\")) | \"\(.ts) [\(.type)/\(.metadata.topic // \"none\")] \(.thought // .observation // .question // .content // \"empty\")\"" "${FILES_TO_PROCESS[@]}" 2>/dev/null || true
+[[ ${#FILES_TO_PROCESS[@]} -eq 0 ]] && { echo "No events found"; exit 0; }
+
+# Build the jq filter
+FILTER=".ts >= \"$FILTER_DATE\""
+
+# Add filters
+[[ -n "$TYPE" ]] && FILTER="$FILTER and .type == \"$TYPE\""
+[[ -n "$TOPIC" ]] && FILTER="$FILTER and .metadata.topic == \"$TOPIC\""
+[[ -n "$SEARCH_TERM" ]] && FILTER="$FILTER and (tostring | test(\"$SEARCH_TERM\"; \"i\"))"
+
+# Prepare for counting or normal output
+COUNT_FLAG=""
+[[ "$COUNT" == "true" ]] && COUNT_FLAG="-s"
+
+# Build sort option
+SORT_CMD="sort -n"
+[[ "$REVERSE" == "true" ]] && SORT_CMD="sort -nr"
+
+# Process files
+{
+    for file in "${FILES_TO_PROCESS[@]}"; do
+        if [[ -f "$file" && -s "$file" ]]; then
+            jq $COUNT_FLAG -r "select($FILTER) | \"\\(.ts // \"unknown\"): \\(.type // \"unknown\") - \\(.thought // .observation // .question // .content // \"empty\")\"" "$file" 2>/dev/null || true
+        fi
+    done
+} | if [[ "$COUNT" == "true" ]]; then
+    # Count mode
+    wc -l | tr -d ' '
+else
+    # Normal mode
+    $SORT_CMD | head -n "$LIMIT"
 fi

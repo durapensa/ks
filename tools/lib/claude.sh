@@ -45,7 +45,9 @@ ks_claude_analyze() {
     fi
     
     # Clean up markdown code blocks if present
-    if grep -q '```json' <<< "$result"; then
+    if rg -q '```json' <<< "$result"; then
+        # Extract content between markdown code blocks
+        # Note: sd doesn't support range patterns, keeping sed for this complex case
         result=$(sed -n '/```json/,/```/p' <<< "$result" | sed '1d;$d')
     fi
     

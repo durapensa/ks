@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# extract-themes - Extract key themes from knowledge events
+# extract-themes - Extract key themes from knowledge events (declarative version)
 
 set -euo pipefail
 
@@ -13,72 +13,26 @@ source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/claude.sh"
 
-# Usage function
-usage() {
-    echo "Usage: extract-themes [options]"
-    echo ""
-    echo "Options:"
-    echo "  --days N        Analyze events from last N days (default: 7)"
-    echo "  --since DATE    Analyze events since ISO date (overrides --days)"
-    echo "  --type TYPE     Filter by event type"
-    echo "  --format FORMAT Output format: text, json, markdown (default: text)"
-    echo "  -h, --help      Show this help message"
-    echo ""
-    echo "Extract key themes from knowledge events using AI analysis"
-}
+# Define command description
+ks_define_usage "Extract key themes from knowledge events using AI analysis"
 
 # Check for background analysis results
 ks_check_background_results || true
 
-# Default values
-DAYS="7"
-SINCE=""
-TYPE_FILTER=""
-FORMAT="text"
+# Initialize and define options
+ks_init_options
+ks_example "--days 7"
+ks_example "--since 2024-03-01 --format json"
+ks_option "days" "d" "Analyze events from last N days" "7" "ks_handle_days"
+ks_option "since" "s" "Analyze events since ISO date (overrides --days)" "" "ks_handle_since"
+ks_option "type" "t" "Filter by event type" "" ""
+ks_option "format" "f" "Output format: text, json, markdown" "text" "ks_handle_format"
 
-# Parse arguments using GNU getopt
-PARSED=$(ks_parse_options "extract-themes" "d:s:t:f:" "days:,since:,type:,format:" "$@") || {
-    usage >&2
-    exit 1
-}
-
-eval set -- "$PARSED"
-
-# Process options
-while true; do
-    case "$1" in
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        -d|--days)
-            ks_handle_days "$2"
-            shift 2
-            ;;
-        -s|--since)
-            ks_handle_since "$2"
-            shift 2
-            ;;
-        -t|--type)
-            TYPE_FILTER="$2"
-            shift 2
-            ;;
-        -f|--format)
-            ks_handle_format "$2"
-            shift 2
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            ks_unknown_option "$1"
-            ;;
-    esac
-done
+# Process options - this sets DAYS, SINCE, TYPE, FORMAT variables
+ks_process_options "$@"
 
 # Extract events and analyze
-CONTENT=$(ks_extract_events "$DAYS" "$SINCE" "$(ks_build_filter "$TYPE_FILTER" "")")
+CONTENT=$(ks_extract_events "$DAYS" "$SINCE" "$(ks_build_filter "$TYPE" "")")
 
 [[ -z "$CONTENT" ]] && { echo "No events found in the last $DAYS days"; exit 0; }
 

@@ -1,62 +1,44 @@
 #!/usr/bin/env bash
-
-# rotate-logs - Rotate knowledge event logs from hot to archive
-# Usage: rotate-logs [--force] [--max-size <bytes>] [--max-age <hours>] [--max-events <count>]
+# Rotate knowledge event logs from hot to archive (declarative version)
 
 set -euo pipefail
 
-# Source configuration and modular libraries
+# Source configuration and libraries
 source "${0%/*}/../../.ks-env"
-source "$KS_ROOT/lib/core.sh"      # For ks_ensure_dirs, ks_timestamp (used by queue)
-source "$KS_ROOT/tools/lib/queue.sh"     # For ks_check_background_results
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/tools/lib/queue.sh"
+
+# Define command description
+ks_define_usage "Rotate knowledge event logs from hot to archive.
+
+Rotation creates archive/YYYY-MM-DD-HHMMSS.jsonl files when:
+- File size exceeds limit
+- Oldest event exceeds age limit
+- Event count exceeds limit
+
+Example:
+  ${0##*/} --max-size 10485760   # Rotate when file exceeds 10MB"
 
 # Check for background analysis results
 ks_check_background_results || true
 
 # Default rotation thresholds
-MAX_SIZE=${MAX_SIZE:-5242880}     # 5MB default
-MAX_AGE=${MAX_AGE:-168}           # 7 days default (in hours)
-MAX_EVENTS=${MAX_EVENTS:-1000}    # 1000 events default
-FORCE_ROTATE=false
+DEFAULT_MAX_SIZE=5242880     # 5MB default
+DEFAULT_MAX_AGE=168          # 7 days default (in hours)
+DEFAULT_MAX_EVENTS=1000      # 1000 events default
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --force)
-            FORCE_ROTATE=true
-            shift
-            ;;
-        --max-size)
-            MAX_SIZE="$2"
-            shift 2
-            ;;
-        --max-age)
-            MAX_AGE="$2"
-            shift 2
-            ;;
-        --max-events)
-            MAX_EVENTS="$2"
-            shift 2
-            ;;
-        --help|-h)
-            echo "Usage: rotate-logs [options]"
-            echo ""
-            echo "Options:"
-            echo "  --force              Force rotation regardless of thresholds"
-            echo "  --max-size <bytes>   Rotate when file exceeds size (default: 5MB)"
-            echo "  --max-age <hours>    Rotate when oldest event exceeds age (default: 168h)"
-            echo "  --max-events <count> Rotate when event count exceeds limit (default: 1000)"
-            echo ""
-            echo "Rotation creates archive/YYYY-MM-DD-HHMMSS.jsonl files"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1" >&2
-            echo "Use --help for usage information" >&2
-            exit 1
-            ;;
-    esac
-done
+# Initialize and define options
+ks_init_options
+ks_example "--max-size 10485760"
+ks_example "--force"
+ks_option "force" "f" "Force rotation regardless of thresholds" "" "" "flag"
+ks_option "max-size" "s" "Rotate when file exceeds size in bytes" "$DEFAULT_MAX_SIZE" ""
+ks_option "max-age" "a" "Rotate when oldest event exceeds age in hours" "$DEFAULT_MAX_AGE" ""
+ks_option "max-events" "e" "Rotate when event count exceeds limit" "$DEFAULT_MAX_EVENTS" ""
+
+# Process options
+ks_process_options "$@"
 
 # Ensure directories exist
 ks_ensure_dirs
@@ -70,29 +52,29 @@ fi
 # Validate JSONL format before rotation
 echo "Validating JSONL format..."
 if ! "$KS_TOOLS_DIR/utils/validate-jsonl" "$KS_HOT_LOG" >/dev/null 2>&1; then
-    echo "ERROR: Hot log has invalid JSONL format. Please fix before rotating." >&2
+    ks_error "Hot log has invalid JSONL format. Please fix before rotating."
     echo "Run: tools/utils/validate-jsonl $KS_HOT_LOG" >&2
     exit 1
 fi
 
 # Function to check if rotation is needed
 should_rotate() {
-    if [[ "$FORCE_ROTATE" = true ]]; then
+    if [[ "${FORCE:-}" == "true" ]]; then
         echo "Force rotation requested"
         return 0
     fi
     
     # Check file size
     local file_size=$(stat -c%s "$KS_HOT_LOG" 2>/dev/null || echo 0)
-    if [[ "$file_size" -gt "$MAX_SIZE" ]]; then
-        echo "File size ($file_size bytes) exceeds limit ($MAX_SIZE bytes)"
+    if [[ "$file_size" -gt "${MAX_SIZE:-$DEFAULT_MAX_SIZE}" ]]; then
+        echo "File size ($file_size bytes) exceeds limit (${MAX_SIZE:-$DEFAULT_MAX_SIZE} bytes)"
         return 0
     fi
     
     # Check event count
     local event_count=$(wc -l < "$KS_HOT_LOG" | tr -d ' ')
-    if [[ "$event_count" -gt "$MAX_EVENTS" ]]; then
-        echo "Event count ($event_count) exceeds limit ($MAX_EVENTS)"
+    if [[ "$event_count" -gt "${MAX_EVENTS:-$DEFAULT_MAX_EVENTS}" ]]; then
+        echo "Event count ($event_count) exceeds limit (${MAX_EVENTS:-$DEFAULT_MAX_EVENTS})"
         return 0
     fi
     
@@ -104,8 +86,8 @@ should_rotate() {
         local current_epoch=$EPOCHSECONDS
         local age_hours=$(( (current_epoch - first_epoch) / 3600 ))
         
-        if [[ "$age_hours" -gt "$MAX_AGE" ]]; then
-            echo "Oldest event age (${age_hours}h) exceeds limit (${MAX_AGE}h)"
+        if [[ "$age_hours" -gt "${MAX_AGE:-$DEFAULT_MAX_AGE}" ]]; then
+            echo "Oldest event age (${age_hours}h) exceeds limit (${MAX_AGE:-$DEFAULT_MAX_AGE}h)"
             return 0
         fi
     fi

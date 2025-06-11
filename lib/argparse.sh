@@ -7,6 +7,10 @@ declare -gA KS_OPTIONS_LONG
 declare -gA KS_OPTIONS_DESC
 declare -gA KS_OPTIONS_DEFAULT
 declare -gA KS_OPTIONS_HANDLER
+declare -gA KS_OPTIONS_TYPE
+
+# Global array for examples
+declare -ga KS_EXAMPLES
 
 # Parse command line options using GNU getopt
 # Usage: ks_parse_options "script-name" "short-opts" "long-opts" "$@"
@@ -17,9 +21,9 @@ ks_parse_options() {
     local long_opts="$3"
     shift 3
     
-    # Always include -h for help
+    # Always include -h for help and --examples
     short_opts="h${short_opts}"
-    long_opts="help${long_opts:+,}${long_opts}"
+    long_opts="help,examples${long_opts:+,}${long_opts}"
     
     # Parse options
     local parsed
@@ -138,18 +142,27 @@ ks_extract_events() {
 
 # Define an option for argument parsing
 # Usage: ks_option "days" "d" "Analyze events from last N days" "7" "ks_handle_days"
+# For flags (no argument): ks_option "verbose" "v" "Enable verbose output" "" "" "flag"
 ks_option() {
     local name="$1"
     local short="${2:-}"
     local desc="${3:-}"
     local default="${4:-}"
     local handler="${5:-}"
+    local type="${6:-arg}"  # "arg" for options with arguments, "flag" for boolean flags
     
     KS_OPTIONS_LONG["$name"]="$name"
     [[ -n "$short" ]] && KS_OPTIONS_SHORT["$name"]="$short"
     KS_OPTIONS_DESC["$name"]="$desc"
     [[ -n "$default" ]] && KS_OPTIONS_DEFAULT["$name"]="$default"
     [[ -n "$handler" ]] && KS_OPTIONS_HANDLER["$name"]="$handler"
+    KS_OPTIONS_TYPE["$name"]="$type"
+}
+
+# Add an example for the tool
+# Usage: ks_example "query memory"
+ks_example() {
+    KS_EXAMPLES+=("$1")
 }
 
 # Generate usage from defined options
@@ -168,17 +181,18 @@ ks_usage() {
     # Show other options
     for name in "${!KS_OPTIONS_LONG[@]}"; do
         local short_opt=""
-        [[ -n "${KS_OPTIONS_SHORT[$name]}" ]] && short_opt="-${KS_OPTIONS_SHORT[$name]}, "
+        [[ -n "${KS_OPTIONS_SHORT[$name]:-}" ]] && short_opt="-${KS_OPTIONS_SHORT[$name]}, "
         local default=""
-        [[ -n "${KS_OPTIONS_DEFAULT[$name]}" ]] && default=" (default: ${KS_OPTIONS_DEFAULT[$name]})"
+        [[ -n "${KS_OPTIONS_DEFAULT[$name]:-}" ]] && default=" (default: ${KS_OPTIONS_DEFAULT[$name]})"
         
         # Check if option takes an argument
         local arg_text=""
-        if [[ "${KS_OPTIONS_HANDLER[$name]}" != "" ]]; then
+        local opt_type="${KS_OPTIONS_TYPE[$name]:-arg}"
+        if [[ "$opt_type" == "arg" ]]; then
             arg_text=" ${name^^}"
         fi
         
-        printf "  %-15s %s%s\n" "${short_opt}--${name}${arg_text}" "${KS_OPTIONS_DESC[$name]}" "$default"
+        printf "  %-20s %s%s\n" "${short_opt}--${name}${arg_text}" "${KS_OPTIONS_DESC[$name]}" "$default"
     done
     
     echo ""
@@ -187,26 +201,37 @@ ks_usage() {
 
 # Process all options using definitions
 # Usage: ks_process_options "$@"
+# Sets REMAINING_ARGS array with positional arguments after options
 ks_process_options() {
     local script_name="${0##*/}"
+    declare -g -a REMAINING_ARGS=()
     
     # Build getopt strings from definitions
     local short_opts=""
     local long_opts=""
     
     for name in "${!KS_OPTIONS_LONG[@]}"; do
-        if [[ -n "${KS_OPTIONS_SHORT[$name]}" ]]; then
-            short_opts="${short_opts}${KS_OPTIONS_SHORT[$name]}:"
+        local opt_type="${KS_OPTIONS_TYPE[$name]:-arg}"
+        
+        if [[ -n "${KS_OPTIONS_SHORT[$name]:-}" ]]; then
+            short_opts="${short_opts}${KS_OPTIONS_SHORT[$name]}"
+            [[ "$opt_type" == "arg" ]] && short_opts="${short_opts}:"
         fi
-        long_opts="${long_opts}${name}:,"
+        
+        long_opts="${long_opts}${name}"
+        [[ "$opt_type" == "arg" ]] && long_opts="${long_opts}:"
+        long_opts="${long_opts},"
     done
+    
+    # Remove trailing comma
+    long_opts="${long_opts%,}"
     
     # Parse and process options
     local parsed
     parsed=$(ks_parse_options "$script_name" "$short_opts" "$long_opts" "$@") || {
         ks_usage "$script_name" ""
         exit 1
-    } >&2
+    }
     
     eval set -- "$parsed"
     
@@ -216,8 +241,21 @@ ks_process_options() {
                 usage
                 exit 0
                 ;;
+            --examples)
+                if [[ ${#KS_EXAMPLES[@]} -gt 0 ]]; then
+                    echo "Examples:"
+                    for example in "${KS_EXAMPLES[@]}"; do
+                        echo "  ${0##*/} $example"
+                    done
+                else
+                    echo "No examples available"
+                fi
+                exit 0
+                ;;
             --)
                 shift
+                # Capture remaining arguments
+                REMAINING_ARGS=("$@")
                 break
                 ;;
             *)
@@ -227,17 +265,33 @@ ks_process_options() {
                     local short_match=false
                     local long_match=false
                     
-                    [[ -n "${KS_OPTIONS_SHORT[$name]}" && "$1" == "-${KS_OPTIONS_SHORT[$name]}" ]] && short_match=true
+                    [[ -n "${KS_OPTIONS_SHORT[$name]:-}" && "$1" == "-${KS_OPTIONS_SHORT[$name]}" ]] && short_match=true
                     [[ "$1" == "--${name}" ]] && long_match=true
                     
                     if [[ "$short_match" == true || "$long_match" == true ]]; then
-                        if [[ -n "${KS_OPTIONS_HANDLER[$name]}" ]]; then
-                            ${KS_OPTIONS_HANDLER[$name]} "$2"
+                        local opt_type="${KS_OPTIONS_TYPE[$name]:-arg}"
+                        
+                        if [[ -n "${KS_OPTIONS_HANDLER[$name]:-}" ]]; then
+                            if [[ "$opt_type" == "flag" ]]; then
+                                ${KS_OPTIONS_HANDLER[$name]}
+                                shift
+                            else
+                                ${KS_OPTIONS_HANDLER[$name]} "$2"
+                                shift 2
+                            fi
                         else
                             # Direct variable assignment
-                            declare -g "${name^^}_FILTER=$2"
+                            # Convert hyphens to underscores for valid bash variable names
+                            local var_name="${name//-/_}"
+                            var_name="${var_name^^}"
+                            if [[ "$opt_type" == "flag" ]]; then
+                                declare -g "${var_name}=true"
+                                shift
+                            else
+                                declare -g "${var_name}=$2"
+                                shift 2
+                            fi
                         fi
-                        shift 2
                         handled=true
                         break
                     fi
@@ -247,4 +301,36 @@ ks_process_options() {
                 ;;
         esac
     done
+    
+    # Apply defaults for unset options (including empty defaults)
+    for name in "${!KS_OPTIONS_LONG[@]}"; do
+        # Convert hyphens to underscores for valid bash variable names
+        local var_name="${name//-/_}"
+        var_name="${var_name^^}"
+        if [[ -z "${!var_name:-}" ]]; then
+            # Use default if defined, otherwise empty string
+            declare -g "${var_name}=${KS_OPTIONS_DEFAULT[$name]:-}"
+        fi
+    done
+}
+
+# Initialize option definitions (clears existing definitions)
+# Usage: ks_init_options
+ks_init_options() {
+    KS_OPTIONS_SHORT=()
+    KS_OPTIONS_LONG=()
+    KS_OPTIONS_DESC=()
+    KS_OPTIONS_DEFAULT=()
+    KS_OPTIONS_HANDLER=()
+    KS_OPTIONS_TYPE=()
+    KS_EXAMPLES=()
+}
+
+# Simple wrapper to define usage function
+# Usage: ks_define_usage "Extract key themes from knowledge events"
+ks_define_usage() {
+    KS_USAGE_DESCRIPTION="$1"
+    usage() {
+        ks_usage "${0##*/}" "$KS_USAGE_DESCRIPTION"
+    }
 }

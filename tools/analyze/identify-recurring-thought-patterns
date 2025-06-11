@@ -1,113 +1,67 @@
 #!/usr/bin/env bash
-# identify-recurring-thought-patterns - Extract recurring themes from knowledge entries
-# Pure analysis function: accepts input, returns themed analysis
+
+# identify-recurring-thought-patterns - Identify recurring patterns in thought events (declarative version)
 
 set -euo pipefail
 
-# Source environment and modular libraries
+# Source configuration and modular libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/files.sh"
 source "$KS_ROOT/lib/time.sh"
 source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/claude.sh"
 
-# Default configuration
-DAYS="3"
-SINCE=""
-FORMAT="text"
-RAW_INPUT=false
+# Define command description
+ks_define_usage "Identify recurring patterns in thought events using AI analysis"
 
-# Usage
-usage() {
-    cat << EOF
-Usage: ${0##*/} [options] < input
+# Check for background analysis results
+ks_check_background_results || true
 
-Identify recurring thought patterns and themes from knowledge entries.
-Reads event content from stdin, outputs analysis to stdout.
+# Initialize and define options
+ks_init_options
+ks_example "--days 30"
+ks_example "--since 2024-01-01 --format markdown"
+ks_option "days" "d" "Analyze events from last N days" "30" "ks_handle_days"
+ks_option "since" "s" "Analyze events since ISO date (overrides --days)" "" "ks_handle_since"
+ks_option "format" "f" "Output format: text, json, markdown" "text" "ks_handle_format"
 
-Options:
-  --days N          Filter to last N days (default: 3)
-  --since DATE      Filter since ISO date (overrides --days)
-  --raw             Input is already filtered content (skip date filtering)
-  --format FORMAT   Output format: text, json (default: text)
-  -h, --help        Show this help message
+# Process options - this sets DAYS, SINCE, FORMAT variables
+ks_process_options "$@"
 
-Input format:
-  - JSONL events (default) - will extract .content field
-  - Raw text with --raw flag
+# Extract only thought events
+CONTENT=$(ks_extract_events "$DAYS" "$SINCE" ".type == \"thought\"")
 
-Output format:
-  - JSON with identified themes and patterns
+[[ -z "$CONTENT" ]] && { echo "No thought events found in the last $DAYS days"; exit 0; }
 
-Example:
-  ${0##*/} --days 7 < knowledge/events-*.jsonl
-EOF
+# Prepare AI prompt
+PROMPT="Analyze the following thought events from the last $DAYS days and identify recurring patterns.
+
+$CONTENT
+
+Look for:
+1. Topics or themes that appear repeatedly
+2. Patterns in how thoughts develop or evolve
+3. Common triggers or contexts
+4. Recurring questions or concerns
+
+Return ONLY valid JSON in this format:
+{
+  \"patterns\": [
+    {
+      \"pattern\": \"Pattern description\",
+      \"frequency\": \"How often it appears\",
+      \"examples\": [\"example1\", \"example2\"],
+      \"significance\": \"Why this pattern matters\"
+    }
+  ]
 }
 
-# Parse arguments using GNU getopt
-PARSED=$(ks_parse_options "${0##*/}" "d:s:rf:" "days:,since:,raw,format:" "$@") || {
-    usage >&2
-    exit 1
-}
+If no patterns are found, return: {\"patterns\": []}"
 
-eval set -- "$PARSED"
+# Analyze with Claude
+ANALYSIS=$(ks_claude_analyze "$PROMPT" || echo "Error: Analysis failed")
 
-# Process options
-while true; do
-    case "$1" in
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        -d|--days)
-            ks_handle_days "$2"
-            shift 2
-            ;;
-        -s|--since)
-            ks_handle_since "$2"
-            shift 2
-            ;;
-        -r|--raw)
-            RAW_INPUT=true
-            shift
-            ;;
-        -f|--format)
-            ks_handle_format "$2"
-            shift 2
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            ks_unknown_option "$1"
-            ;;
-    esac
-done
-
-# Prepare input for analysis
-input_file=$(mktemp)
-if [[ "$RAW_INPUT" == "true" ]]; then
-    # Input is already filtered content
-    cat > "$input_file"
-else
-    # Input is JSONL events, extract content from time window
-    filter_date=$(ks_get_filter_date "$DAYS" "$SINCE")
-    jq -r --arg filter_date "$filter_date" \
-        'select(.ts >= $filter_date) | .content' > "$input_file"
-fi
-
-# Check if we have any content
-if [[ ! -s "$input_file" ]]; then
-    echo '{"error": "No content to analyze"}' >&2
-    rm -f "$input_file"
-    exit 1
-fi
-
-# Get analysis from Claude using modular function
-ANALYSIS=$(ks_claude_analyze "$KS_PROMPT_PATTERNS" < "$input_file")
-
-rm -f "$input_file"
-
-# Format output using modular formatter
-ks_format_analysis "$ANALYSIS" "$FORMAT" "Recurring Thought Patterns"
+# Output based on format
+ks_format_analysis "$ANALYSIS" "$FORMAT" "Thought Pattern Analysis"

@@ -22,7 +22,7 @@ ks_sanitize_string() {
     # Remove or escape potentially dangerous characters
     # Allow alphanumeric, spaces, hyphens, underscores, periods, colons
     # Replace slashes and spaces with underscores for safe filenames
-    echo "$input" | sed 's/[^a-zA-Z0-9 _.:-]//g' | sed 's/[/ ]/_/g'
+    echo "$input" | sd '[^a-zA-Z0-9 _.:-]' '' | sd '[/ ]' '_'
 }
 
 ks_validate_days() {

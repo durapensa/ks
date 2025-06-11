@@ -1,15 +1,30 @@
 #!/usr/bin/env bash
-# Check event count triggers and spawn background analyses
-# Called automatically after event capture
+
+# check-event-triggers - Check event count triggers and spawn background analyses
 
 set -euo pipefail
 
 # Source environment and modular libraries
 source "${0%/*}/../../.ks-env"
-source "$KS_ROOT/lib/core.sh"      # For ks_timestamp
-source "$KS_ROOT/lib/events.sh"    # For ks_count_new_events
-source "$KS_ROOT/lib/files.sh"     # For ks_collect_files
-source "$KS_ROOT/tools/lib/queue.sh"     # For ks_queue_list_pending, ks_queue_check, ks_queue_add_pending
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/events.sh"
+source "$KS_ROOT/lib/files.sh"
+source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/tools/lib/queue.sh"
+
+# Define usage
+ks_define_usage "Check event count triggers and spawn background analyses
+
+Usually called automatically after event capture"
+
+# Initialize and define options
+ks_init_options
+ks_example ""
+ks_example "--verbose"
+ks_option "verbose" "v" "Show detailed output" "" "" "flag"
+
+# Process options
+ks_process_options "$@"
 
 # Configuration
 EVENT_THRESHOLD_THEMES="${KS_EVENT_THRESHOLD_THEMES:-10}"
@@ -17,8 +32,12 @@ EVENT_THRESHOLD_CONNECTIONS="${KS_EVENT_THRESHOLD_CONNECTIONS:-20}"
 EVENT_THRESHOLD_PATTERNS="${KS_EVENT_THRESHOLD_PATTERNS:-30}"
 LAST_COUNT_FILE="$KS_BACKGROUND_DIR/.event_trigger_state"
 
-# Silent mode for automatic calls
-SILENT_MODE="${1:-silent}"
+# Set mode based on --verbose flag
+if [[ "${VERBOSE:-false}" == "true" ]]; then
+    SILENT_MODE="verbose"
+else
+    SILENT_MODE="silent"
+fi
 
 # Initialize state file
 init_state() {
