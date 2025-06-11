@@ -14,9 +14,6 @@ ks_define_usage "Knowledge system CLI wrapper with dynamic subcommands"
 ks_init_options
 ks_option "allhelp" "" "Show help for all available tools" "" "" "flag"
 
-# Process options
-ks_process_options "$@"
-
 # Tool discovery
 declare -A TOOL_MAP
 discover_tools() {
@@ -31,6 +28,66 @@ discover_tools() {
         fi
     done < <(cd "$KS_ROOT/tools" && find . -type f -executable ! -name "*.*")
 }
+
+# Custom usage function that shows available subcommands
+usage() {
+    echo "Usage: ${0##*/} [options] [subcommand] [args...]"
+    echo ""
+    echo "When no subcommand is provided, enters interactive capture mode."
+    echo ""
+    echo "Available subcommands:"
+    
+    # Discover tools to show available subcommands
+    discover_tools
+    
+    # Group by category for better display
+    local -A categories
+    for subcommand in "${!TOOL_MAP[@]}"; do
+        local tool="${TOOL_MAP[$subcommand]}"
+        local rel_path="${tool#$KS_ROOT/tools/}"
+        local category="${rel_path%/*}"
+        categories["$category"]+="$subcommand "
+    done
+    
+    for category in $(printf '%s\n' "${!categories[@]}" | sort); do
+        echo "  $category:"
+        for subcommand in ${categories[$category]}; do
+            printf "    %-20s → %s\n" "$subcommand" "${TOOL_MAP[$subcommand]#$KS_ROOT/}"
+        done
+    done
+    
+    echo ""
+    echo "Options:"
+    echo "  -h, --help          Show this help message"
+    echo "      --allhelp       Show help for all available tools"
+    echo ""
+    echo "Examples:"
+    echo "  ${0##*/}                    # Interactive mode with Claude"
+    echo "  ${0##*/} events thought \"topic\" \"content\""
+    echo "  ${0##*/} query --days 7 \"search term\""
+    echo "  ${0##*/} analyze-extract-themes --format json"
+}
+
+# Handle subcommands before processing ks-new options
+# This prevents subcommand --help from being intercepted by ks-new
+if [[ $# -gt 0 && "$1" != --* ]]; then
+    # This is a subcommand, handle it directly
+    discover_tools
+    
+    subcommand="$1"
+    shift
+    
+    if [[ -n "${TOOL_MAP[$subcommand]:-}" ]]; then
+        exec "${TOOL_MAP[$subcommand]}" "$@"
+    else
+        echo "Unknown subcommand: $subcommand"
+        echo "Run '${0##*/} --help' to see available subcommands"
+        exit 1
+    fi
+fi
+
+# Process ks-new options (only if no subcommand was provided)
+ks_process_options "$@"
 
 # Show all help
 show_all_help() {
@@ -108,16 +165,6 @@ if [[ ${#REMAINING_ARGS[@]} -eq 0 ]]; then
     exit 0
 fi
 
-# Discover tools and handle subcommand
-discover_tools
-
-subcommand="${REMAINING_ARGS[0]}"
-tool_args=("${REMAINING_ARGS[@]:1}")
-
-if [[ -n "${TOOL_MAP[$subcommand]:-}" ]]; then
-    exec "${TOOL_MAP[$subcommand]}" "${tool_args[@]}"
-else
-    echo "Unknown subcommand: $subcommand"
-    echo "Available: $(printf '%s ' "${!TOOL_MAP[@]}" | sort)"
-    exit 1
-fi
+# If we reach here, there was no subcommand and no special flags
+echo "No subcommand provided. Use --help to see available commands."
+exit 1
