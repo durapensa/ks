@@ -2,6 +2,7 @@
 
 # Knowledge System Setup Script
 # Usage: ./setup.sh        (updates shell config)
+#        ./setup.sh -g     (also builds Go components)
 #        source setup.sh  (updates shell config AND current session)
 
 # Get the directory of this script
@@ -11,6 +12,43 @@ KS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCED=0
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     SOURCED=1
+fi
+
+# On macOS, ensure GNU tools are in PATH for this script
+if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then
+    # Add GNU getopt to PATH for option parsing
+    export PATH="$(brew --prefix)/opt/gnu-getopt/bin:$PATH"
+fi
+
+# Parse command line arguments only when executed (not sourced)
+SETUP_GO=0
+if [[ $SOURCED -eq 0 ]] && [[ $# -gt 0 ]]; then
+    # Use GNU getopt (will be available after first setup.sh run)
+    TEMP=$(getopt -o g --long go -n 'setup.sh' -- "$@")
+    if [ $? != 0 ]; then
+        echo "Error: Invalid options"
+        echo "Usage: ./setup.sh        # Basic setup"
+        echo "       ./setup.sh -g     # Setup with Go components (or --go)"
+        exit 1
+    fi
+    eval set -- "$TEMP"
+    
+    while true; do
+        case "$1" in
+            -g|--go)
+                SETUP_GO=1
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)
+                echo "Internal error!"
+                exit 1
+                ;;
+        esac
+    done
 fi
 
 echo "Setting up Knowledge System..."
@@ -212,6 +250,53 @@ if [[ $KS_CONFIGURED -eq 1 && $GNU_TOOLS_CONFIGURED -eq 1 ]]; then
     echo "Knowledge System fully configured in $SHELL_CONFIG"
 fi
 
+# Go setup function
+setup_go_components() {
+    echo ""
+    echo "Setting up Go components..."
+    
+    # Check if Go is installed
+    if ! command -v go >/dev/null 2>&1; then
+        echo "Go is not installed. Would you like to install it?"
+        echo ""
+        if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then
+            echo "Install via Homebrew? (y/n): "
+            read -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                echo "Installing Go..."
+                brew install go
+            else
+                echo "Please install Go manually from https://golang.org/dl/"
+                return 1
+            fi
+        else
+            echo "Please install Go from https://golang.org/dl/"
+            echo "Then run: ./setup.sh -go"
+            return 1
+        fi
+    fi
+    
+    # Build Go components
+    if [[ -d "$KS_ROOT/go" ]]; then
+        echo "Building Go components..."
+        (cd "$KS_ROOT/go" && make build)
+        if [[ $? -eq 0 ]]; then
+            echo "✓ Go components built successfully"
+        else
+            echo "Error building Go components"
+            return 1
+        fi
+    else
+        echo "No Go components found in $KS_ROOT/go"
+    fi
+}
+
+# Run Go setup if requested
+if [[ $SETUP_GO -eq 1 ]]; then
+    setup_go_components
+fi
+
 # If being sourced, also set up the current shell
 if [[ $SOURCED -eq 1 ]]; then
     export KS_ROOT
@@ -224,6 +309,8 @@ if [[ $SOURCED -eq 1 ]]; then
         export PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$PATH"
         # Add util-linux to PATH (for flock)
         export PATH="$(brew --prefix)/opt/util-linux/bin:$PATH"
+        # Add GNU getopt to PATH (for portable option parsing)
+        export PATH="$(brew --prefix)/opt/gnu-getopt/bin:$PATH"
     fi
     
     echo ""
@@ -244,3 +331,6 @@ echo ""
 echo "Configuration:"
 echo "  Set KS_MODEL to change Claude model (default: sonnet)"
 echo "  Example: export KS_MODEL=opus"
+echo ""
+echo "Optional Go components:"
+echo "  Run './setup.sh -g' to install Go and build additional tools"
