@@ -23,10 +23,14 @@
   - Captures rejection reason and improvement notes
   - Supports learning from rejected patterns
 
-**Next Steps** (Phase 2):
-- Build concept extraction and clustering for distillation
-- Implement weight calculation algorithm
-- Create periodic distillation background job
+**Phase 2** (Issue #19):
+- Implement SQLite-based distilled knowledge graph
+- Build distillation and curation tools
+- Create minimal schema with concepts, edges, and aliases tables
+
+**Experimental** (Issue #20):
+- Claude-Claude dialogue framework for discovering conceptual attractors
+- Potential validation of mechanistic interpretability findings
 
 ### 2. Test Suite Stabilization (Issue #15)
 **Status**: Phase 1 complete - all fast tests passing (23/23)
@@ -101,12 +105,15 @@ tools/workflow/review-findings     # In separate terminal
 
 **Critical**:
 - **Issue #15**: Test suite stabilization (Phase 1 complete, Phase 2 in progress)
+- **Issue #18**: Unified knowledge graph (Phase 1 complete, Phase 2 planned)
 
 **In Progress**:  
 - **Issue #16**: Background analysis tools (1/3 complete)
 - **Issue #3**: Background scheduler stability testing
 
 **Ready to Start**:
+- **Issue #19**: SQLite-based distilled knowledge graph implementation
+- **Issue #20**: Claude-Claude dialogue experiment
 - **Issue #10**: Derived knowledge pipeline (architecture ready)
 - **Issue #11**: Interactive mode enhancements (quick capture, tags)
 
