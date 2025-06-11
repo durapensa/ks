@@ -19,6 +19,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y jq
     
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
     - name: Setup knowledge system
       run: ./setup.sh
     
@@ -27,6 +32,18 @@ jobs:
     
     - name: Run fast test suite
       run: ./tests/run_fast_tests.sh
+    
+    - name: Build Go components
+      run: |
+        if [ -d "go" ]; then
+          cd go && make build
+        fi
+    
+    - name: Run Go tests
+      run: |
+        if [ -d "go" ]; then
+          cd go && go test -short ./...
+        fi
       
   mocked-tests:
     name: Mocked Tests (Fake Claude API)
@@ -56,6 +73,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
     - name: Setup knowledge system
       run: ./setup.sh
     
@@ -64,6 +86,18 @@ jobs:
     
     - name: Run CI test suite
       run: ./tests/run_ci_tests.sh
+    
+    - name: Build Go components
+      run: |
+        if [ -d "go" ]; then
+          cd go && make build
+        fi
+    
+    - name: Run Go tests
+      run: |
+        if [ -d "go" ]; then
+          cd go && go test -short ./...
+        fi
       
   # Note: No real Claude API tests in CI
   # Those run manually or in nightly builds with secrets

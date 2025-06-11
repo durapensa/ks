@@ -2,3 +2,12 @@ knowledge/
 *.log
 .DS_Store
 .env
+
+# Go development
+/ksd-tui            # Future Go replacement for ksd
+*.exe               # Windows binaries
+go/bin/             # Go test binaries
+go/vendor/          # Vendored dependencies
+go/tmp/             # Build cache
+.air.toml           # Hot reload config
+__debug_bin*        # Debugger artifacts
