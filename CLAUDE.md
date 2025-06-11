@@ -18,8 +18,8 @@ ksd                                  # Open dashboard in second terminal (option
 tools/capture/query "search term"    # Search existing knowledge
 
 # Development workflow
-cat DEVELOPMENT_STATUS.md            # Check current priorities
-./tests/run_fast_tests.sh           # Run unit tests (9/9 passing)
+gh issue list --label "priority: high"  # Check current priorities
+./tests/run_fast_tests.sh              # Run unit tests
 tools/plumbing/monitor-background-processes --status  # Check system health
 ```
 
@@ -81,19 +81,21 @@ source "$KS_ROOT/tools/lib/claude.sh" # If using Claude
 
 Scripts load ~50-200 lines instead of the old 420-line monolithic library.
 
-## Development Status Integration
+## Development Priorities
 
-**CRITICAL**: Always check `DEVELOPMENT_STATUS.md` before starting work:
-- **Current Focus** section shows immediate priorities  
-- **Technical Debt** identifies blockers
-- **Development Context** provides debugging commands
+Active work is tracked through GitHub milestones:
+- **Testing Infrastructure** - Conversation harness and automated testing (start here)
+- **Knowledge Graph Implementation** - SQLite-based distilled knowledge storage
+- **Dashboard & UI Improvements** - Enhanced interfaces and user experience
+
+Use `gh issue list --label "priority: high"` to see immediate priorities.
 
 ## Development Workflow
 
 **When** the user agrees to implement a feature or fix:
-- **Then** IMMEDIATELY document your complete implementation plan in `DEVELOPMENT_STATUS.md`
-- **Then** include specific steps, files to modify, and expected outcomes
-- **Then** this plan serves as both documentation and a roadmap for the work
+- **Then** check the relevant GitHub issue for context and requirements
+- **Then** create a clear implementation plan with specific steps
+- **Then** reference the issue number in commits for traceability
 
 **When** you successfully complete an issue or make significant improvements:
 - **Then** commit your changes with a descriptive message referencing the issue number
@@ -107,15 +109,14 @@ Scripts load ~50-200 lines instead of the old 420-line monolithic library.
 **When** ending any development session:
 - **Then** ALWAYS stage, commit, and push all tested changes before session termination
 - **Then** verify clean working directory with `git status` to prevent work loss
-- **Then** update `DEVELOPMENT_STATUS.md` if significant progress was made
-
-## Current Development Context
-
-**IMPORTANT**: Check `DEVELOPMENT_STATUS.md` for current priorities, technical debt, and next steps.
+- **Then** update issue comments if significant progress was made
 
 ## Active Development
 
-Track development with `gh issue list`. Use `gh issue view <number>` for details.
+Track work via GitHub:
+- `gh issue list --milestone <name>` - View issues by milestone
+- `gh issue list --label "priority: high"` - See high-priority items
+- `gh issue view <number>` - Get detailed issue information
 
 ## Testing Strategy
 
@@ -126,13 +127,11 @@ Track development with `gh issue list`. Use `gh issue view <number>` for details
 
 ## Documentation Hygiene
 
-**Critical**: Keep development context current and avoid redundancy:
-- `DEVELOPMENT_STATUS.md` tracks immediate priorities and technical debt
+**Critical**: Keep documentation focused and avoid redundancy:
 - `CLAUDE.md` provides project overview and workflow guidance  
-- Git history tracks what was completed (no need to duplicate in docs)
-- GitHub issues track specific feature requests and bugs
-
-Update `DEVELOPMENT_STATUS.md` after significant changes to maintain session continuity.
+- GitHub issues and milestones track priorities and progress
+- Git history records what was completed
+- Issue comments capture implementation details and decisions
 
 ## Communication Style
 
