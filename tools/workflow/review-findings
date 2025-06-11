@@ -112,16 +112,14 @@ display_finding() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# Integrate approved finding into knowledge base (dual-write)
+# Integrate approved finding into knowledge base
 integrate_finding() {
     local finding="$1"
     local analysis_type="$2"
     local finding_index="$3"
     local completed_at="$4"
     
-    # Generate unique derived reference ID
     local timestamp=$(ks_timestamp)
-    local derived_ref="${timestamp}-${analysis_type}-$(printf "%03d" "$finding_index")"
     
     # Determine event type based on analysis
     local event_type="insight"  # Default to insight
@@ -137,85 +135,28 @@ integrate_finding() {
             ;;
     esac
     
-    # Extract content for the summary - handle various analysis formats
-    local name=$(echo "$finding" | jq -r '.name // ""')
-    local description=$(echo "$finding" | jq -r '.description // ""')
-    local content=$(echo "$finding" | jq -r '.content // .theme // .insight // .pattern // ""')
-    local pattern=$(echo "$finding" | jq -r '.pattern // ""')
-    local occurrences=$(echo "$finding" | jq -r '.occurrences // ""')
-    
-    # Build summary content for hot.jsonl
-    local summary_content
-    if [[ -n "$pattern" ]] && [[ "$pattern" != "null" ]] && [[ "$pattern" != "" ]]; then
-        # Pattern finding
-        summary_content="Pattern: $pattern"
-        if [[ -n "$description" ]] && [[ "$description" != "null" ]]; then
-            summary_content="$summary_content - $description"
-        fi
-        if [[ -n "$occurrences" ]] && [[ "$occurrences" != "null" ]] && [[ "$occurrences" != "" ]]; then
-            summary_content="$summary_content (${occurrences} occurrences)"
-        fi
-    elif [[ -n "$name" ]] && [[ "$name" != "null" ]]; then
-        summary_content="$name"
-        if [[ -n "$description" ]] && [[ "$description" != "null" ]]; then
-            summary_content="$summary_content: $description"
-        fi
-    elif [[ -z "$content" ]] || [[ "$content" == "null" ]]; then
-        summary_content="Approved finding"
-    else
-        summary_content="$content"
-    fi
-    
-    # Create enriched metadata for approved.jsonl
-    local enriched_metadata=$(jq -nc \
+    # Create metadata for approved.jsonl
+    local metadata=$(jq -nc \
         --arg source "background-analysis" \
         --arg approved_at "$timestamp" \
         --arg analysis_type "$analysis_type" \
         --arg model "${KS_MODEL:-sonnet}" \
         --arg completed_at "${completed_at:-unknown}" \
-        --arg derived_ref "$derived_ref" \
         '{
             source: $source,
             approved_at: $approved_at,
             analysis_type: $analysis_type,
             model: $model,
-            completed_at: $completed_at,
-            derived_ref: $derived_ref
+            completed_at: $completed_at
         }')
     
-    # Create summary metadata for hot.jsonl (minimal, includes derived_ref)
-    local summary_metadata=$(jq -nc \
-        --arg source "background-analysis" \
-        --arg approved_at "$timestamp" \
-        --arg derived_ref "$derived_ref" \
-        '{
-            source: $source,
-            approved_at: $approved_at,
-            derived_ref: $derived_ref
-        }')
-    
-    # Write summary to hot.jsonl for discovery
-    local summary_event=$(jq -nc \
-        --arg ts "$timestamp" \
-        --arg type "$event_type" \
-        --arg content "$summary_content" \
-        --argjson metadata "$summary_metadata" \
-        '{
-            ts: $ts,
-            type: $type,
-            content: $content,
-            metadata: $metadata
-        }')
-    
-    echo "$summary_event" >> "$KS_HOT_LOG"
-    
-    # Write full finding to derived/approved.jsonl
+    # Write full finding to derived/approved.jsonl only
     mkdir -p "$KS_DERIVED_DIR"
     local full_entry=$(jq -nc \
         --arg ts "$timestamp" \
         --arg type "$event_type" \
         --argjson finding "$finding" \
-        --argjson metadata "$enriched_metadata" \
+        --argjson metadata "$metadata" \
         '{
             ts: $ts,
             type: $type,
