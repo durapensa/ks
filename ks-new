@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# ks-new - Knowledge system CLI wrapper
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -f "$SCRIPT_DIR/.ks-env" ]] && source "$SCRIPT_DIR/.ks-env"
+source "$KS_ROOT/lib/argparse.sh"
+
+# Define usage
+ks_define_usage "Knowledge system CLI wrapper with dynamic subcommands"
+
+# Initialize and define options
+ks_init_options
+ks_option "allhelp" "" "Show help for all available tools" "" "" "flag"
+
+# Process options
+ks_process_options "$@"
+
+# Tool discovery
+declare -A TOOL_MAP
+discover_tools() {
+    while IFS= read -r tool; do
+        local dir_name="${tool%/*}"
+        local basename="${tool##*/}"
+        
+        if [[ "$dir_name" == "./capture" ]]; then
+            TOOL_MAP["$basename"]="$KS_ROOT/tools/${tool#./}"
+        else
+            TOOL_MAP["${dir_name#./}-${basename}"]="$KS_ROOT/tools/${tool#./}"
+        fi
+    done < <(cd "$KS_ROOT/tools" && find . -type f -executable ! -name "*.*")
+}
+
+# Show all help
+show_all_help() {
+    echo "ks-new --help"
+    usage
+    echo
+    
+    for subcommand in $(printf '%s\n' "${!TOOL_MAP[@]}" | sort); do
+        local tool_path="${TOOL_MAP[$subcommand]#$KS_ROOT/}"
+        echo "$tool_path --help"
+        "${TOOL_MAP[$subcommand]}" --help 2>/dev/null || echo "No help available"
+        echo
+        echo "$tool_path --examples"
+        "${TOOL_MAP[$subcommand]}" --examples 2>/dev/null || echo "No examples available"
+        echo
+    done
+}
+
+# Check pending analyses
+check_pending() {
+    if [[ -f "$KS_ROOT/lib/core.sh" && -f "$KS_ROOT/tools/lib/queue.sh" ]]; then
+        source "$KS_ROOT/lib/core.sh" 2>/dev/null || true
+        source "$KS_ROOT/tools/lib/queue.sh" 2>/dev/null || true
+        
+        if command -v ks_queue_list_pending >/dev/null 2>&1; then
+            local pending=$(ks_queue_list_pending 2>/dev/null || echo "[]")
+            if [[ "$pending" != "[]" ]]; then
+                local count=$(echo "$pending" | jq -r 'length' 2>/dev/null || echo "0")
+                if [[ "$count" -gt 0 ]]; then
+                    echo "📋 $count analysis/analyses ready for review"
+                    echo
+                fi
+            fi
+        fi
+    fi
+}
+
+# Handle --allhelp
+if [[ "${ALLHELP:-false}" == "true" ]]; then
+    discover_tools
+    show_all_help
+    exit 0
+fi
+
+# No args = interactive mode
+if [[ ${#REMAINING_ARGS[@]} -eq 0 ]]; then
+    check_pending
+    
+    # Create Claude session with tools context
+    discover_tools
+    echo "Initializing Claude with knowledge system tools context..."
+    
+    # Create .claude directory if it doesn't exist
+    mkdir -p "$SCRIPT_DIR/chat/.claude"
+    
+    # Generate dynamic tool reference file
+    {
+        echo "# Knowledge System Tool Reference"
+        echo
+        echo "Complete reference for all available tools in this knowledge system."
+        echo "Each tool can be invoked directly using the paths shown below."
+        echo
+        show_all_help
+    } > "$SCRIPT_DIR/chat/.claude/ks-instructions.md"
+    
+    # Start Claude with both project context and tools reference
+    cd "$SCRIPT_DIR/chat"
+    {
+        echo "SYSTEM CONTEXT:"
+        echo "@CLAUDE.md"
+        echo "@.claude/ks-instructions.md"
+        echo "---"
+        echo "Ready for knowledge system interaction."
+    } | claude
+    exit 0
+fi
+
+# Discover tools and handle subcommand
+discover_tools
+
+subcommand="${REMAINING_ARGS[0]}"
+tool_args=("${REMAINING_ARGS[@]:1}")
+
+if [[ -n "${TOOL_MAP[$subcommand]:-}" ]]; then
+    exec "${TOOL_MAP[$subcommand]}" "${tool_args[@]}"
+else
+    echo "Unknown subcommand: $subcommand"
+    echo "Available: $(printf '%s ' "${!TOOL_MAP[@]}" | sort)"
+    exit 1
+fi

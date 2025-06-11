@@ -6,8 +6,9 @@ set -euo pipefail
 
 # Source environment and modular libraries
 source "${0%/*}/../../.ks-env"
-source "$KS_ROOT/lib/core.sh"      # For ks_timestamp
-source "$KS_ROOT/tools/lib/queue.sh"     # For ks_queue_list_pending, ks_queue_clear
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/tools/lib/queue.sh"
 
 # ANSI color codes
 GREEN='\033[0;32m'
@@ -17,29 +18,23 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Usage information
-usage() {
-    cat << EOF
-Usage: ${0##*/} [options]
-
-Interactive tool to review findings from background analyses.
-Run this in a separate terminal when notified of pending reviews.
-
-Options:
-  --list        List pending analyses without reviewing
-  --help        Show this help message
+# Define usage
+ks_define_usage "Interactive tool to review findings from background analyses
 
 This tool will:
 1. Show each finding from completed analyses
 2. Allow you to approve (y) or reject (n) each finding
 3. Approved findings are integrated into your knowledge base
-4. Clear the analysis from the queue when complete
+4. Clear the analysis from the queue when complete"
 
-Examples:
-  ${0##*/}           # Start interactive review
-  ${0##*/} --list    # See what's pending
-EOF
-}
+# Initialize and define options
+ks_init_options
+ks_example ""
+ks_example "--list"
+ks_option "list" "" "List pending analyses without reviewing" "" "" "flag"
+
+# Process options
+ks_process_options "$@"
 
 # Display a finding with formatting
 display_finding() {
@@ -408,20 +403,9 @@ main_review() {
     echo -e "\n${GREEN}Review session complete${NC}"
 }
 
-# Parse arguments
-case "${1:-}" in
-    --list)
-        list_pending
-        ;;
-    --help)
-        usage
-        ;;
-    "")
-        main_review
-        ;;
-    *)
-        echo "Unknown option: $1" >&2
-        usage >&2
-        exit 1
-        ;;
-esac
+# Handle actions based on options
+if [[ "${LIST:-false}" == "true" ]]; then
+    list_pending
+else
+    main_review
+fi
