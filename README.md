@@ -30,14 +30,19 @@ source setup.sh
 - `flock` - File locking for log rotation (optional but recommended)
 - GNU coreutils - For consistent date/stat behavior across platforms
 
-**Automatic Installation (macOS):**
-- On macOS with Homebrew, `setup.sh` will detect missing dependencies and offer to install them automatically
-- Installs GNU coreutils for cross-platform compatibility (eliminates date/stat command differences)
-- Configures PATH to prefer GNU tools, ensuring consistent behavior across platforms
+**Additional Tools (installed by setup.sh):**
+- `gnu-getopt` - Portable command-line option parsing for cleaner scripts
+- `sd` - Modern sed replacement for safer text manipulation
+- `ripgrep` (rg) - Fast, modern grep for searching
+- `pueue` - Process queue management for background tasks
+- `watchexec` - File watcher for automated development workflows
+- `moreutils` - Unix utilities including `sponge` for safe in-place editing
 
-**Manual Installation:**
-- macOS: `brew install bash jq gum coreutils util-linux` (then install Claude CLI separately)
-- Linux: Use your distribution's package manager (ensure bash 5.x+)
+**Installation:**
+- Run `./setup.sh` to check for missing dependencies
+- On macOS with Homebrew, it will show what's missing and offer to install automatically
+- On Linux, it will provide package manager commands for your distribution
+- Configures PATH to prefer GNU tools for consistent cross-platform behavior
 
 ## Configuration
 

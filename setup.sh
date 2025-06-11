@@ -28,6 +28,14 @@ check_dependencies() {
     command -v claude >/dev/null 2>&1 || missing_deps+=("claude")
     command -v python3 >/dev/null 2>&1 || missing_deps+=("python3")
     
+    # Additional bash tools for cleaner scripts
+    command -v gnu-getopt >/dev/null 2>&1 || command -v getopt >/dev/null 2>&1 || missing_deps+=("gnu-getopt")
+    command -v sd >/dev/null 2>&1 || missing_deps+=("sd")
+    command -v rg >/dev/null 2>&1 || missing_deps+=("ripgrep")
+    command -v pueue >/dev/null 2>&1 || missing_deps+=("pueue")
+    command -v watchexec >/dev/null 2>&1 || missing_deps+=("watchexec")
+    command -v sponge >/dev/null 2>&1 || missing_deps+=("moreutils")
+    
     # Check for modern bash (5.x+)
     # First check if brew's bash is installed (even if not in PATH yet)
     local brew_bash_found=0
@@ -115,6 +123,16 @@ check_dependencies() {
             fi
         else
             echo "Please install missing dependencies using your system package manager"
+            echo ""
+            echo "For Ubuntu/Debian:"
+            echo "  sudo apt-get update"
+            echo "  sudo apt-get install jq python3 flock coreutils moreutils ripgrep"
+            echo "  # For newer tools not in apt, use alternative methods:"
+            echo "  # sd: cargo install sd"
+            echo "  # pueue: cargo install pueue"
+            echo "  # watchexec: cargo install watchexec-cli"
+            echo "  # gum: see https://github.com/charmbracelet/gum#installation"
+            echo ""
             echo "Notes:"
             echo "  - Install Claude CLI separately from https://claude.ai/cli"
             echo "  - python3 should be available by default on most modern systems"
@@ -184,6 +202,8 @@ if [[ "$OSTYPE" == "darwin"* && $GNU_TOOLS_CONFIGURED -eq 0 ]]; then
     echo "    export PATH=\"\$(brew --prefix)/opt/coreutils/libexec/gnubin:\$PATH\"" >> "$SHELL_CONFIG"
     echo "    # Add util-linux to PATH (for flock)" >> "$SHELL_CONFIG"
     echo "    export PATH=\"\$(brew --prefix)/opt/util-linux/bin:\$PATH\"" >> "$SHELL_CONFIG"
+    echo "    # Add GNU getopt to PATH (for portable option parsing)" >> "$SHELL_CONFIG"
+    echo "    export PATH=\"\$(brew --prefix)/opt/gnu-getopt/bin:\$PATH\"" >> "$SHELL_CONFIG"
     echo "fi" >> "$SHELL_CONFIG"
     echo "✓ Added GNU tools PATH configuration to $SHELL_CONFIG"
 fi
