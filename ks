@@ -27,9 +27,33 @@ discover_tools() {
     done < <(cd "$KS_ROOT/tools" && $find_cmd . -type f -executable ! -name "*.*" | sort)
 }
 
+# Generalized parallel processing function
+parallel_process_tools() {
+    local operation_func="$1"
+    export -f "$operation_func"
+    printf '%s\n' "${TOOL_MAP[@]}" | sort | parallel --keep-order "$operation_func"
+}
+
+# Extract tool description from --help output
+extract_description() {
+    local tool_file="$1"
+    local basename="${tool_file##*/}"
+    local desc=$("$tool_file" --help 2>/dev/null | grep "^Description: " | sed 's/^Description: //')
+    echo "$basename:$desc"
+}
+
+# Export functions for parallel
+export -f extract_description
+
 # Custom usage function that shows available subcommands
 usage() {
     discover_tools
+    
+    # Extract all tool descriptions upfront using parallel processing
+    declare -A TOOL_DESCRIPTIONS
+    while IFS=: read -r tool_name description; do
+        TOOL_DESCRIPTIONS["$tool_name"]="$description"
+    done < <(parallel_process_tools extract_description)
     
     echo "Usage: ${0##*/} [OPTION]... [SUBCOMMAND] [ARGS]..."
     echo "Knowledge system CLI for interactive capture and analysis."
@@ -46,21 +70,9 @@ usage() {
                     has_tools=true
                 fi
                 
-                # Simple descriptions based on tool names
-                case "$subcommand" in
-                    events) printf "    %-20s %s\n" "$subcommand" "append events to knowledge stream" ;;
-                    query) printf "    %-20s %s\n" "$subcommand" "search existing knowledge" ;;
-                    extract-themes) printf "    %-20s %s\n" "$subcommand" "identify key themes from events" ;;
-                    find-connections) printf "    %-20s %s\n" "$subcommand" "discover relationships between concepts" ;;
-                    curate-duplicate-knowledge) printf "    %-20s %s\n" "$subcommand" "detect redundant insights" ;;
-                    identify-recurring-thought-patterns) printf "    %-20s %s\n" "$subcommand" "analyze thinking patterns" ;;
-                    review-findings) printf "    %-20s %s\n" "$subcommand" "review and approve analysis results" ;;
-                    check-event-triggers) printf "    %-20s %s\n" "$subcommand" "monitor background analysis triggers" ;;
-                    monitor-background-processes) printf "    %-20s %s\n" "$subcommand" "track system processes" ;;
-                    rotate-logs) printf "    %-20s %s\n" "$subcommand" "manage log file rotation" ;;
-                    validate-jsonl) printf "    %-20s %s\n" "$subcommand" "verify JSONL file format" ;;
-                    *) printf "    %-20s %s\n" "$subcommand" "tool description" ;;
-                esac
+                # Use extracted description or fallback
+                local desc="${TOOL_DESCRIPTIONS[$subcommand]:-tool description}"
+                printf "    %-20s %s\n" "$subcommand" "$desc"
             fi
         done
         [[ "$has_tools" == true ]] && echo ""
@@ -111,7 +123,7 @@ process_tool_help() {
     echo
 }
 
-# Export function for parallel
+# Export functions for parallel
 export -f process_tool_help
 export KS_ROOT
 
@@ -121,8 +133,8 @@ show_all_help() {
     usage
     echo
     
-    # Use GNU parallel with --keep-order to preserve tool ordering
-    printf '%s\n' "${TOOL_MAP[@]}" | sort | parallel --keep-order process_tool_help
+    # Use generalized parallel processing
+    parallel_process_tools process_tool_help
 }
 
 # Check pending analyses
