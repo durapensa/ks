@@ -6,24 +6,25 @@ set -euo pipefail
 
 # Source configuration and libraries
 source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
 
-# Simple argument parsing (UTILS category)
+# Standardized usage function
 usage() {
-    cat << 'EOF'
-Validate JSONL file format
-
-Usage: validate-jsonl [options] FILE
-
-Arguments:
-  FILE               Path to JSONL file to validate
-
-Options:
-  --help             Show this help
-
-Examples:
-  validate-jsonl knowledge/events/2024-03-15.jsonl
-  validate-jsonl $KS_HOT_LOG
-EOF
+    declare -a arguments=(
+        "FILE               Path to JSONL file to validate"
+    )
+    declare -a examples=(
+        "validate-jsonl knowledge/events/2024-03-15.jsonl"
+        "validate-jsonl \$KS_HOT_LOG"
+    )
+    ks_generate_usage \
+        "Validate JSONL file format" \
+        "validate-jsonl" \
+        "[options] FILE" \
+        "UTILS" \
+        arguments \
+        examples
 }
 
 # Simple argument parsing for utilities
@@ -34,18 +35,14 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --*)
-            echo "Unknown option: $1" >&2
-            usage
-            exit 1
+            ks_exit_usage "Unknown option: $1"
             ;;
         *)
             # First non-option argument is the file
             if [[ -z "${FILE:-}" ]]; then
                 FILE="$1"
             else
-                echo "Error: Multiple file arguments not supported" >&2
-                usage
-                exit 1
+                ks_exit_usage "Multiple file arguments not supported"
             fi
             shift
             ;;
@@ -54,14 +51,11 @@ done
 
 # Validate file argument
 if [[ -z "${FILE:-}" ]]; then
-    echo "Error: FILE argument required" >&2
-    usage
-    exit 1
+    ks_exit_usage "FILE argument required"
 fi
 
 if [ ! -f "$FILE" ]; then
-    echo "Error: File '$FILE' not found" >&2
-    exit 1
+    ks_exit_error "File '$FILE' not found"
 fi
 
 # Check if file is empty
@@ -111,5 +105,5 @@ if [ $ERROR_COUNT -eq 0 ]; then
     exit 0
 else
     echo "✗ Found $ERROR_COUNT invalid lines out of $LINE_COUNT total" >&2
-    exit 1
+    exit $EXIT_ERROR
 fi

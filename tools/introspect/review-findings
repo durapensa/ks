@@ -7,6 +7,8 @@ set -euo pipefail
 # Source environment and modular libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 
 # ANSI color codes
@@ -17,27 +19,20 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Generated argument parsing (INTROSPECT category)
+# Standardized usage function
 usage() {
-    cat << 'EOF'
-Interactive tool to review findings from background analyses
-
-Usage: review-findings [options]
-
-Options:
-  --help              Show this help
-  --list             List pending items without reviewing
-  --batch-size BATCH-SIZE Review N items at once (default: 5)
-  --detailed         Show detailed analysis
-  --interactive      Enable interactive mode
-  --confidence-threshold CONFIDENCE-THRESHOLD Filter by confidence level (default: 0.5)
-  --show-context     Include source events
-  --auto-approve     Auto-approve above threshold
-
-Examples:
-  review-findings
-  review-findings --list
-EOF
+    declare -a arguments=()
+    declare -a examples=(
+        "review-findings"
+        "review-findings --list"
+    )
+    ks_generate_usage \
+        "Interactive tool to review findings from background analyses" \
+        "review-findings" \
+        "[options]" \
+        "INTROSPECT" \
+        arguments \
+        examples
 }
 
 # Build getopt options
@@ -51,7 +46,7 @@ LONG_OPTS="${LONG_OPTS},show-context"
 LONG_OPTS="${LONG_OPTS},auto-approve"
 
 # Parse options with getopt (dummy -o h required for long options)
-OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || { usage; exit 1; }
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
 eval set -- "$OPTS"
 
 # Process options
@@ -66,7 +61,7 @@ while true; do
         --show-context) SHOW_CONTEXT=true; shift ;;
         --auto-approve) AUTO_APPROVE=true; shift ;;
         --) shift; break ;;
-        *) echo "Internal error" >&2; exit 1 ;;
+        *) ks_exit_error "Internal argument parsing error" ;;
     esac
 done
 

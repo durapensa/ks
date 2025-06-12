@@ -9,32 +9,26 @@ source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/files.sh"
 source "$KS_ROOT/lib/time.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
 
-# Generated argument parsing (CAPTURE_SEARCH category)
+# Standardized usage function
 usage() {
-    cat << 'EOF'
-Search and filter knowledge events
-
-Usage: query [options] [SEARCH_TERM]
-
-Arguments:
-  SEARCH_TERM        Text to search for (optional)
-
-Options:
-  --help              Show this help
-  --days DAYS        Search last N days (default: 7)
-  --since SINCE      Search events since ISO date
-  --type TYPE        Filter by event type
-  --topic TOPIC      Filter by topic
-  --limit LIMIT      Limit results (default: 20)
-  --reverse          Show oldest first
-  --count            Show count only
-
-Examples:
-  query memory
-  query --days 7 "learning"
-  query --type thought --topic productivity
-EOF
+    declare -a arguments=(
+        "SEARCH_TERM        Text to search for (optional)"
+    )
+    declare -a examples=(
+        "query memory"
+        "query --days 7 \"learning\""
+        "query --type thought --topic productivity"
+    )
+    ks_generate_usage \
+        "Search and filter knowledge events" \
+        "query" \
+        "[options] [SEARCH_TERM]" \
+        "CAPTURE_SEARCH" \
+        arguments \
+        examples
 }
 
 # Build getopt options
@@ -48,7 +42,7 @@ LONG_OPTS="${LONG_OPTS},reverse"
 LONG_OPTS="${LONG_OPTS},count"
 
 # Parse options with getopt (dummy -o h required for long options)
-OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || { usage; exit 1; }
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
 eval set -- "$OPTS"
 
 # Process options
@@ -63,7 +57,7 @@ while true; do
         --reverse) REVERSE=true; shift ;;
         --count) COUNT=true; shift ;;
         --) shift; break ;;
-        *) echo "Internal error" >&2; exit 1 ;;
+        *) ks_exit_error "Internal argument parsing error" ;;
     esac
 done
 
@@ -85,7 +79,7 @@ FILTER_DATE=$(ks_get_filter_date "$DAYS" "$SINCE")
 # Collect files
 ks_collect_files_since "$FILTER_DATE"
 
-[[ ${#FILES_TO_PROCESS[@]} -eq 0 ]] && { echo "No events found"; exit 0; }
+[[ ${#FILES_TO_PROCESS[@]} -eq 0 ]] && { echo "No events found"; exit $EXIT_SUCCESS; }
 
 # Build the jq filter
 FILTER=".ts >= \"$FILTER_DATE\""

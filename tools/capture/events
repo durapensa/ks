@@ -8,27 +8,28 @@ set -euo pipefail
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/events.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
 
-# Custom argument parsing for events tool (CAPTURE_INPUT category)
+# Standardized usage function
 usage() {
-    cat << 'EOF'
-Append events to knowledge stream
-
-Usage: events [options] TYPE TOPIC [CONTENT]
-
-Arguments:
-  TYPE               Event type (thought, insight, observation, etc.)
-  TOPIC              Topic or category for the event
-  CONTENT            Event content (optional - reads from stdin if omitted)
-
-Options:
-  --help             Show this help
-
-Examples:
-  events thought "learning" "Discovered new pattern in data"
-  events insight "productivity" "Focus blocks work better in morning"
-  echo "Content from pipe" | events thought "learning"
-EOF
+    declare -a arguments=(
+        "TYPE               Event type (thought, insight, observation, etc.)"
+        "TOPIC              Topic or category for the event"
+        "CONTENT            Event content (optional - reads from stdin if omitted)"
+    )
+    declare -a examples=(
+        "events thought \"learning\" \"Discovered new pattern in data\""
+        "events insight \"productivity\" \"Focus blocks work better in morning\""
+        "echo \"Content from pipe\" | events thought \"learning\""
+    )
+    ks_generate_usage \
+        "Append events to knowledge stream" \
+        "events" \
+        "[options] TYPE TOPIC [CONTENT]" \
+        "CAPTURE_INPUT" \
+        arguments \
+        examples
 }
 
 # Parse arguments (handle options before positional args)
@@ -40,9 +41,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --*)
-            echo "Unknown option: $1" >&2
-            usage
-            exit 1
+            ks_exit_usage "Unknown option: $1"
             ;;
         *)
             ARGS+=("$1")
@@ -53,9 +52,7 @@ done
 
 # Validate positional arguments
 if [[ ${#ARGS[@]} -lt 2 ]]; then
-    echo "Error: Required arguments missing" >&2
-    usage
-    exit 1
+    ks_exit_usage "Required arguments missing"
 fi
 
 TYPE="${ARGS[0]}"
@@ -63,7 +60,7 @@ TOPIC="${ARGS[1]}"
 CONTENT=""
 
 # Validate event type
-ks_validate_event_type "$TYPE" || exit 1
+ks_validate_event_type "$TYPE" || exit $EXIT_VALIDATION
 
 # Get content from argument or stdin
 if [[ ${#ARGS[@]} -ge 3 ]]; then

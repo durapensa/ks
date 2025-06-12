@@ -6,6 +6,8 @@ set -euo pipefail
 # Source configuration and libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 
 # Check for background analysis results
@@ -16,27 +18,27 @@ DEFAULT_MAX_SIZE=5242880     # 5MB default
 DEFAULT_MAX_AGE=168          # 7 days default (in hours)
 DEFAULT_MAX_EVENTS=1000      # 1000 events default
 
-# Custom argument parsing (PLUMBING category + rotation-specific options)
+# Standardized usage function with custom options
 usage() {
-    cat << 'EOF'
-Rotate knowledge event logs from hot to archive
-
-Usage: rotate-logs [options]
-
-Options:
-  --help              Show this help
-  --verbose          Show detailed output
-  --dry-run          Show what would be done
-  --force            Force rotation regardless of thresholds
-  --max-size SIZE    Rotate when file exceeds size in bytes (default: 5242880)
-  --max-age HOURS    Rotate when oldest event exceeds age in hours (default: 168)
-  --max-events COUNT Rotate when event count exceeds limit (default: 1000)
-
-Examples:
-  rotate-logs --max-size 10485760
-  rotate-logs --force
-  rotate-logs --dry-run --verbose
-EOF
+    declare -a arguments=()
+    declare -a custom_options=(
+        "$(ks_format_option "--max-size SIZE" "Rotate when file exceeds size in bytes (default: 5242880)")"
+        "$(ks_format_option "--max-age HOURS" "Rotate when oldest event exceeds age in hours (default: 168)")"
+        "$(ks_format_option "--max-events COUNT" "Rotate when event count exceeds limit (default: 1000)")"
+    )
+    declare -a examples=(
+        "rotate-logs --max-size 10485760"
+        "rotate-logs --force"
+        "rotate-logs --dry-run --verbose"
+    )
+    ks_generate_usage \
+        "Rotate knowledge event logs from hot to archive" \
+        "rotate-logs" \
+        "[options]" \
+        "PLUMBING" \
+        arguments \
+        examples \
+        custom_options
 }
 
 # Build getopt options (PLUMBING + custom)
@@ -49,7 +51,7 @@ LONG_OPTS="${LONG_OPTS},max-age:"
 LONG_OPTS="${LONG_OPTS},max-events:"
 
 # Parse options with getopt (dummy -o h required for long options)
-OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || { usage; exit 1; }
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
 eval set -- "$OPTS"
 
 # Process options
@@ -63,7 +65,7 @@ while true; do
         --max-age) MAX_AGE="$2"; shift 2 ;;
         --max-events) MAX_EVENTS="$2"; shift 2 ;;
         --) shift; break ;;
-        *) echo "Internal error" >&2; exit 1 ;;
+        *) ks_exit_error "Internal argument parsing error" ;;
     esac
 done
 

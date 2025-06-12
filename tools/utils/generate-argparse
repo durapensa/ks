@@ -9,30 +9,49 @@ source "$KS_ROOT/lib/categories.sh"
 source "$KS_ROOT/lib/error.sh"
 source "$KS_ROOT/lib/usage.sh"
 
+# Standardized usage function
 usage() {
-    cat << 'EOF'
-Generate simplified argument parsing code for tool categories.
-
-Usage: generate-argparse [options] CATEGORY
-
-Categories:
-  ANALYZE         AI analysis tools
-  CAPTURE_INPUT   Event capture tools  
-  CAPTURE_SEARCH  Knowledge search tools
-  PLUMBING        System infrastructure tools
-  INTROSPECT      Human reflection tools
-  UTILS           Utility tools (no standard options)
-
-Options:
-  --output FILE   Write to file (default: stdout)
-  --tool-name     Tool name for usage text
-  --description   Tool description
-  --help          Show this help
-
-Examples:
-  generate-argparse ANALYZE --tool-name extract-themes
-  generate-argparse INTROSPECT --output /tmp/parser.sh
-EOF
+    declare -a arguments=(
+        "CATEGORY          Category name (ANALYZE, CAPTURE_INPUT, CAPTURE_SEARCH, PLUMBING, INTROSPECT, UTILS)"
+    )
+    declare -a custom_options=(
+        "$(ks_format_option "--output FILE" "Write to file (default: stdout)")"
+        "$(ks_format_option "--tool-name NAME" "Tool name for usage text")"
+        "$(ks_format_option "--description DESC" "Tool description")"
+    )
+    declare -a examples=(
+        "generate-argparse ANALYZE --tool-name extract-themes"
+        "generate-argparse INTROSPECT --output /tmp/parser.sh"
+    )
+    
+    # Custom content for categories
+    echo "Generate simplified argument parsing code for tool categories."
+    echo ""
+    echo "Usage: generate-argparse [options] CATEGORY"
+    echo ""
+    echo "Categories:"
+    echo "  ANALYZE         AI analysis tools"
+    echo "  CAPTURE_INPUT   Event capture tools"
+    echo "  CAPTURE_SEARCH  Knowledge search tools"
+    echo "  PLUMBING        System infrastructure tools"
+    echo "  INTROSPECT      Human reflection tools"
+    echo "  UTILS           Utility tools (no standard options)"
+    echo ""
+    echo "Arguments:"
+    for arg_line in "${arguments[@]}"; do
+        printf "  %s\n" "$arg_line"
+    done
+    echo ""
+    echo "Options:"
+    printf "  %-20s %s\n" "--help" "Show this help"
+    for option_line in "${custom_options[@]}"; do
+        printf "  %s\n" "$option_line"
+    done
+    echo ""
+    echo "Examples:"
+    for example in "${examples[@]}"; do
+        printf "  %s\n" "$example"
+    done
 }
 
 # Parse arguments

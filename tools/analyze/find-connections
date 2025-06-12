@@ -10,6 +10,8 @@ source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/files.sh"
 source "$KS_ROOT/lib/time.sh"
 source "$KS_ROOT/lib/validation.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/claude.sh"
 source "$KS_ROOT/tools/lib/analysis.sh"
@@ -17,26 +19,20 @@ source "$KS_ROOT/tools/lib/analysis.sh"
 # Check for background analysis results
 ks_check_background_results || true
 
-# Generated argument parsing (ANALYZE category)
+# Standardized usage function
 usage() {
-    cat << 'EOF'
-Find non-obvious connections between knowledge events using AI analysis
-
-Usage: find-connections [options]
-
-Options:
-  --help              Show this help
-  --days DAYS        Analyze events from last N days (default: 7)
-  --since SINCE      Analyze events since ISO date
-  --type TYPE        Filter by event type
-  --topic TOPIC      Filter by topic metadata
-  --format FORMAT    Output format (default: text)
-  --verbose          Show detailed output
-
-Examples:
-  find-connections --days 7
-  find-connections --topic "learning" --format json
-EOF
+    declare -a arguments=()
+    declare -a examples=(
+        "find-connections --days 7"
+        "find-connections --topic \"learning\" --format json"
+    )
+    ks_generate_usage \
+        "Find non-obvious connections between knowledge events using AI analysis" \
+        "find-connections" \
+        "[options]" \
+        "ANALYZE" \
+        arguments \
+        examples
 }
 
 # Build getopt options
@@ -49,7 +45,7 @@ LONG_OPTS="${LONG_OPTS},format:"
 LONG_OPTS="${LONG_OPTS},verbose"
 
 # Parse options with getopt (dummy -o h required for long options)
-OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || { usage; exit 1; }
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
 eval set -- "$OPTS"
 
 # Process options
@@ -63,7 +59,7 @@ while true; do
         --format) FORMAT="$2"; shift 2 ;;
         --verbose) VERBOSE=true; shift ;;
         --) shift; break ;;
-        *) echo "Internal error" >&2; exit 1 ;;
+        *) ks_exit_error "Internal argument parsing error" ;;
     esac
 done
 
