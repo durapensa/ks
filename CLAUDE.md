@@ -64,22 +64,47 @@ Scripts use modular libraries to load only needed functions:
 - **core.sh** - Essential utilities: directory creation, timestamps, input validation
 - **events.sh** - Event validation and counting
 - **files.sh** - JSONL file collection and ordering
+- **categories.sh** - Category-based option definitions for consistent argument parsing
+- **validation.sh** - Category-specific validation functions
 
 ### Tools Libraries (`tools/lib/`)
 - **claude.sh** - Claude AI integration and analysis formatting
 - **queue.sh** - Background analysis queue management
 - **process.sh** - Background process tracking and locking
+- **analysis.sh** - Business logic for analysis tools (extracted from old argparse.sh)
 
-### Usage Example
+### Argument Parsing System
+
+All tools use category-based argument parsing for consistency:
+
+**Categories:**
+- **ANALYZE** - AI analysis tools (days, since, type, topic, format, verbose)
+- **CAPTURE_INPUT** - Event capture tools (custom positional arguments)
+- **CAPTURE_SEARCH** - Knowledge search tools (days, search, type, topic, limit, reverse, count)
+- **PLUMBING** - System infrastructure tools (verbose, dry-run, force, status, active, completed, failed, cleanup)
+- **INTROSPECT** - Human reflection tools (list, batch-size, detailed, interactive, confidence-threshold)
+- **UTILS** - Specialized tools (custom argument patterns)
+
+**Usage Example:**
 ```bash
 #!/usr/bin/env bash
 source "${0%/*}/../../.ks-env"
-source "$KS_ROOT/lib/core.sh"         # Essential utilities
-source "$KS_ROOT/lib/files.sh"        # If processing files  
-source "$KS_ROOT/tools/lib/claude.sh" # If using Claude
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/validation.sh"
+source "$KS_ROOT/tools/lib/analysis.sh"
+
+# Generated argument parsing (ANALYZE category)
+usage() { ... }
+# Build getopt options
+LONG_OPTS="help,days:,since:,type:,format:,verbose"
+# Parse and validate
+...
 ```
 
-Scripts load ~50-200 lines instead of the old 420-line monolithic library.
+**Code Generation:**
+Use `tools/utils/generate-argparse CATEGORY --tool-name name --description "desc"` to generate consistent parsers.
+
+Scripts load ~50-200 lines instead of the old 420-line monolithic library, with generated argument parsing replacing complex declarative systems.
 
 ## Development Priorities
 

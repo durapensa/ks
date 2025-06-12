@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+# Generate simplified argument parsing code from category definitions
+
+set -euo pipefail
+
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/categories.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+
+usage() {
+    cat << 'EOF'
+Generate simplified argument parsing code for tool categories.
+
+Usage: generate-argparse [options] CATEGORY
+
+Categories:
+  ANALYZE         AI analysis tools
+  CAPTURE_INPUT   Event capture tools  
+  CAPTURE_SEARCH  Knowledge search tools
+  PLUMBING        System infrastructure tools
+  INTROSPECT      Human reflection tools
+  UTILS           Utility tools (no standard options)
+
+Options:
+  --output FILE   Write to file (default: stdout)
+  --tool-name     Tool name for usage text
+  --description   Tool description
+  --help          Show this help
+
+Examples:
+  generate-argparse ANALYZE --tool-name extract-themes
+  generate-argparse INTROSPECT --output /tmp/parser.sh
+EOF
+}
+
+# Parse arguments
+OUTPUT=""
+TOOL_NAME="tool"
+DESCRIPTION=""
+CATEGORY=""
+
+# First pass: collect category and options
+ARGS=("$@")
+for ((i=0; i<${#ARGS[@]}; i++)); do
+    case "${ARGS[i]}" in
+        --output)
+            OUTPUT="${ARGS[i+1]}"
+            ((i++))
+            ;;
+        --tool-name)
+            TOOL_NAME="${ARGS[i+1]}"
+            ((i++))
+            ;;
+        --description)
+            DESCRIPTION="${ARGS[i+1]}"
+            ((i++))
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        -*)
+            ks_exit_usage "Unknown option: ${ARGS[i]}"
+            ;;
+        *)
+            # Assume first non-option is category
+            [[ -z "$CATEGORY" ]] && CATEGORY="${ARGS[i]}"
+            ;;
+    esac
+done
+
+[[ -z "$CATEGORY" ]] && ks_exit_usage "Category required"
+
+
+# Validate category
+[[ -z "${KS_CATEGORY_OPTIONS[$CATEGORY]:-}" ]] && {
+    ks_error "Invalid category: $CATEGORY"
+    ks_error "Valid categories: ${!KS_CATEGORY_OPTIONS[*]}"
+    exit $EXIT_VALIDATION
+}
+
+# Generate parsing code
+generate_parser() {
+    local category="$1"
+    local tool_name="$2"
+    local description="$3"
+    local options="${KS_CATEGORY_OPTIONS[$category]}"
+    
+    # Generate required library imports
+    echo "# Source required libraries for standardized patterns"
+    echo "source \"\$KS_ROOT/lib/error.sh\""
+    echo "source \"\$KS_ROOT/lib/usage.sh\""
+    echo ""
+    
+    # Generate standardized usage function
+    echo "# Standardized usage function"
+    echo "usage() {"
+    echo "    declare -a arguments=()"
+    echo "    declare -a examples=()"
+    echo "    ks_simple_usage \\"
+    if [[ -n "$description" ]]; then
+        echo "        \"$description\" \\"
+    else
+        echo "        \"${tool_name^} tool\" \\"
+    fi
+    echo "        \"$tool_name\" \\"
+    echo "        \"[options]\" \\"
+    echo "        \"${category}\""
+    echo "}"
+    echo ""
+    
+    # Generate getopt string construction
+    echo "# Build getopt options"
+    echo "LONG_OPTS=\"help\""
+    
+    while IFS='|' read -r long short desc default; do
+        [[ -z "$long" ]] && continue
+        
+        if [[ "$default" == "BOOL" ]]; then
+            # Boolean flag option
+            echo "LONG_OPTS=\"\${LONG_OPTS},$long\""
+        else
+            # Argument option  
+            echo "LONG_OPTS=\"\${LONG_OPTS},$long:\""
+        fi
+    done <<< "$options"
+    
+    echo ""
+    echo "# Parse options with getopt (dummy -o h required for long options)"
+    echo "OPTS=\$(\$KS_GETOPT -o h -l \"\$LONG_OPTS\" -- \"\$@\") || ks_exit_usage \"Invalid options provided\""
+    echo "eval set -- \"\$OPTS\""
+    echo ""
+    echo "# Process options"
+    echo "while true; do"
+    echo "    case \"\$1\" in"
+    echo "        --help) usage; exit 0 ;;"
+    
+    # Generate case statements
+    while IFS='|' read -r long short desc default; do
+        [[ -z "$long" ]] && continue
+        
+        local var_name="${long//-/_}"
+        var_name="${var_name^^}"
+        
+        if [[ "$default" == "BOOL" ]]; then
+            # Boolean flag option
+            echo "        --$long) $var_name=true; shift ;;"
+        else
+            # Argument option
+            echo "        --$long) $var_name=\"\$2\"; shift 2 ;;"
+        fi
+    done <<< "$options"
+    
+    echo "        --) shift; break ;;"
+    echo "        *) ks_exit_error \"Internal argument parsing error\" ;;"
+    echo "    esac"
+    echo "done"
+    echo ""
+    
+    # Generate default assignments
+    echo "# Apply defaults and initialize variables"
+    while IFS='|' read -r long short desc default; do
+        [[ -z "$long" ]] && continue
+        
+        local var_name="${long//-/_}"
+        var_name="${var_name^^}"
+        
+        if [[ "$default" == "BOOL" ]]; then
+            echo "${var_name}=\"\${${var_name}:-}\""
+        else
+            echo "${var_name}=\"\${${var_name}:-${default:-}}\""
+        fi
+    done <<< "$options"
+    
+    echo ""
+    echo "# Validate options (optional)"
+    echo "# ks_validate_${category,,}_options \"\$VAR1\" \"\$VAR2\" ..."
+}
+
+# Output generated code
+if [[ -n "$OUTPUT" ]]; then
+    generate_parser "$CATEGORY" "$TOOL_NAME" "$DESCRIPTION" > "$OUTPUT"
+    echo "Generated parser for $CATEGORY category: $OUTPUT" >&2
+else
+    generate_parser "$CATEGORY" "$TOOL_NAME" "$DESCRIPTION"
+fi

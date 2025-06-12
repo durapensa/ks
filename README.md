@@ -27,11 +27,10 @@ source setup.sh
 - `claude` - Claude CLI (required) 
 - `gum` - Beautiful TUI components for dashboard (required for ksd)
 - `python3` - For JSONL migration utilities (typically pre-installed)
-- `flock` - File locking for log rotation (optional but recommended)
 - GNU coreutils - For consistent date/stat behavior across platforms
 
 **Additional Tools (installed by setup.sh):**
-- `gnu-getopt` - Portable command-line option parsing for cleaner scripts
+- `util-linux` - Provides getopt and flock for portable argument parsing and file locking
 - `sd` - Modern sed replacement for safer text manipulation
 - `ripgrep` (rg) - Fast, modern grep for searching
 - `pueue` - Process queue management for background tasks
@@ -90,39 +89,73 @@ chat/                   # Conversation context
 knowledge/              # Personal data (gitignored)
   events/hot.jsonl      # Current event stream
   derived/              # Processed knowledge
-tools/                  # Processing utilities
+tools/                  # Processing utilities (category-based)
   capture/              # Event capture and query
-  analyze/              # Pattern extraction
-  process/              # Batch operations
-  monitor/              # Real-time analysis
+  analyze/              # AI-powered pattern extraction
+  introspect/           # Human reflection and review
+  plumbing/             # System infrastructure
+  utils/                # Specialized utilities
+lib/                    # Core library modules
+  categories.sh         # Category-based argument definitions
+  validation.sh         # Category-specific validation
+tools/lib/              # Tool-specific library modules
+  analysis.sh           # Business logic for analysis tools
 ```
 
 ## Tools
 
-### Capture
+All tools use category-based argument parsing for consistent interfaces and behavior.
+
+### Capture (CAPTURE_INPUT/CAPTURE_SEARCH categories)
 - `tools/capture/events` - Log knowledge events (JSONL format)
+  - Usage: `events TYPE TOPIC [CONTENT]`
+  - Supports stdin input for piped content
 - `tools/capture/query` - Search events across hot log and archives
+  - Standard options: `--days`, `--since`, `--type`, `--topic`, `--limit`, `--reverse`, `--count`
 
-### Analysis  
-- `tools/analyze/extract-themes` - Find recurring themes
-  - Supports `--format [text|json|markdown]` output
-  - Use `--days N` to limit time range
-  - Use `--type TYPE` to filter by event type
-- `tools/analyze/find-connections` - Identify concept relationships
-  - Supports `--format [text|json|markdown]` output
-  - Use `--days N` to limit time range
-  - Use `--topic TOPIC` to filter by topic
+### Analysis (ANALYZE category)  
+- `tools/analyze/extract-themes` - Find recurring themes using AI analysis
+- `tools/analyze/find-connections` - Discover non-obvious connections between events
+- `tools/analyze/identify-recurring-thought-patterns` - Pattern analysis for thought events
+- `tools/analyze/curate-duplicate-knowledge` - Prevent knowledge graph pollution
+  - Standard options: `--days`, `--since`, `--type`, `--topic`, `--format`, `--verbose`
+  - Custom options: `--content`, `--threshold`, `--window`, `--sources`
 
-### Process
-- `tools/process/rotate-logs` - Archive old events
-  - `--max-size BYTES` - Rotate when size exceeded
-  - `--max-age HOURS` - Rotate when age exceeded
-  - `--max-events COUNT` - Rotate when count exceeded
-  - `--force` - Force immediate rotation
+### Introspection (INTROSPECT category)
+- `tools/introspect/review-findings` - Interactive review of background analysis results
+  - Options: `--list`, `--batch-size`, `--detailed`, `--interactive`, `--confidence-threshold`
 
-### Utilities
+### System Infrastructure (PLUMBING category)
+- `tools/plumbing/check-event-triggers` - Monitor event thresholds and spawn analyses
+- `tools/plumbing/monitor-background-processes` - Manage background analysis processes  
+- `tools/plumbing/rotate-logs` - Rotate event logs from hot to archive
+  - Standard options: `--verbose`, `--dry-run`, `--force`
+  - Custom options: `--max-size`, `--max-age`, `--max-events`
+
+### Utilities (UTILS category)
 - `tools/utils/validate-jsonl` - Validate JSONL file format
-- `tools/utils/migrate-to-jsonl.py` - Convert multi-line JSON to JSONL
+- `tools/utils/generate-argparse` - Generate category-based argument parsers
+
+## Category System
+
+The knowledge system uses a category-based argument parsing system for consistency across all tools:
+
+**Categories and Standard Options:**
+- **ANALYZE**: `--days`, `--since`, `--type`, `--topic`, `--format`, `--verbose`
+- **CAPTURE_INPUT**: Custom positional arguments (TYPE TOPIC [CONTENT])
+- **CAPTURE_SEARCH**: `--days`, `--since`, `--type`, `--topic`, `--limit`, `--reverse`, `--count`  
+- **PLUMBING**: `--verbose`, `--dry-run`, `--force`, `--status`, `--active`, `--completed`, `--failed`, `--cleanup`
+- **INTROSPECT**: `--list`, `--batch-size`, `--detailed`, `--interactive`, `--confidence-threshold`
+- **UTILS**: Custom argument patterns per tool
+
+**Code Generation:**
+```bash
+# Generate argument parser for a new tool
+tools/utils/generate-argparse ANALYZE --tool-name my-analysis --description "My analysis tool"
+```
+
+This system eliminates code duplication and ensures consistent interfaces across all tools.
+
 
 ## Event Format
 

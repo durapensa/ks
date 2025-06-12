@@ -8,36 +8,66 @@ set -euo pipefail
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/events.sh"
-source "$KS_ROOT/lib/argparse.sh"
 
-# Define usage
-ks_define_usage "Description: Append events to knowledge stream"
+# Custom argument parsing for events tool (CAPTURE_INPUT category)
+usage() {
+    cat << 'EOF'
+Append events to knowledge stream
 
-# Initialize and define examples
-ks_init_options
-ks_example "thought \"learning\" \"Discovered new pattern in data\""
-ks_example "insight \"productivity\" \"Focus blocks work better in morning\""
+Usage: events [options] TYPE TOPIC [CONTENT]
 
-# Process options
-ks_process_options "$@"
+Arguments:
+  TYPE               Event type (thought, insight, observation, etc.)
+  TOPIC              Topic or category for the event
+  CONTENT            Event content (optional - reads from stdin if omitted)
 
-# Get positional arguments
-if [[ ${#REMAINING_ARGS[@]} -lt 2 ]]; then
+Options:
+  --help             Show this help
+
+Examples:
+  events thought "learning" "Discovered new pattern in data"
+  events insight "productivity" "Focus blocks work better in morning"
+  echo "Content from pipe" | events thought "learning"
+EOF
+}
+
+# Parse arguments (handle options before positional args)
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --help)
+            usage
+            exit 0
+            ;;
+        --*)
+            echo "Unknown option: $1" >&2
+            usage
+            exit 1
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Validate positional arguments
+if [[ ${#ARGS[@]} -lt 2 ]]; then
     echo "Error: Required arguments missing" >&2
     usage
     exit 1
 fi
 
-TYPE="${REMAINING_ARGS[0]}"
-TOPIC="${REMAINING_ARGS[1]}"
+TYPE="${ARGS[0]}"
+TOPIC="${ARGS[1]}"
 CONTENT=""
 
 # Validate event type
 ks_validate_event_type "$TYPE" || exit 1
 
 # Get content from argument or stdin
-if [[ ${#REMAINING_ARGS[@]} -ge 3 ]]; then
-    CONTENT="${REMAINING_ARGS[2]}"
+if [[ ${#ARGS[@]} -ge 3 ]]; then
+    CONTENT="${ARGS[2]}"
 else
     CONTENT=$(cat)
 fi

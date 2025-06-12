@@ -9,28 +9,74 @@ source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/files.sh"
 source "$KS_ROOT/lib/time.sh"
-source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/lib/validation.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/claude.sh"
-
-# Define command description
-ks_define_usage "Description: Find non-obvious connections between knowledge events using AI analysis"
+source "$KS_ROOT/tools/lib/analysis.sh"
 
 # Check for background analysis results
 ks_check_background_results || true
 
-# Initialize and define options
-ks_init_options
-ks_example "--days 7"
-ks_example "--topic \"learning\" --format json"
-ks_option "days" "d" "Analyze events from last N days" "7" "ks_handle_days"
-ks_option "since" "s" "Analyze events since ISO date (overrides --days)" "" "ks_handle_since"
-ks_option "type" "t" "Filter by event type" "" ""
-ks_option "topic" "p" "Filter by topic metadata" "" ""
-ks_option "format" "f" "Output format: text, json, markdown" "text" "ks_handle_format"
+# Generated argument parsing (ANALYZE category)
+usage() {
+    cat << 'EOF'
+Find non-obvious connections between knowledge events using AI analysis
 
-# Process options - this sets DAYS, SINCE, TYPE, TOPIC, FORMAT variables
-ks_process_options "$@"
+Usage: find-connections [options]
+
+Options:
+  --help              Show this help
+  --days DAYS        Analyze events from last N days (default: 7)
+  --since SINCE      Analyze events since ISO date
+  --type TYPE        Filter by event type
+  --topic TOPIC      Filter by topic metadata
+  --format FORMAT    Output format (default: text)
+  --verbose          Show detailed output
+
+Examples:
+  find-connections --days 7
+  find-connections --topic "learning" --format json
+EOF
+}
+
+# Build getopt options
+LONG_OPTS="help"
+LONG_OPTS="${LONG_OPTS},days:"
+LONG_OPTS="${LONG_OPTS},since:"
+LONG_OPTS="${LONG_OPTS},type:"
+LONG_OPTS="${LONG_OPTS},topic:"
+LONG_OPTS="${LONG_OPTS},format:"
+LONG_OPTS="${LONG_OPTS},verbose"
+
+# Parse options with getopt (dummy -o h required for long options)
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || { usage; exit 1; }
+eval set -- "$OPTS"
+
+# Process options
+while true; do
+    case "$1" in
+        --help) usage; exit 0 ;;
+        --days) DAYS="$2"; shift 2 ;;
+        --since) SINCE="$2"; shift 2 ;;
+        --type) TYPE="$2"; shift 2 ;;
+        --topic) TOPIC="$2"; shift 2 ;;
+        --format) FORMAT="$2"; shift 2 ;;
+        --verbose) VERBOSE=true; shift ;;
+        --) shift; break ;;
+        *) echo "Internal error" >&2; exit 1 ;;
+    esac
+done
+
+# Apply defaults and initialize variables
+DAYS="${DAYS:-7}"
+FORMAT="${FORMAT:-text}"
+SINCE="${SINCE:-}"
+TYPE="${TYPE:-}"
+TOPIC="${TOPIC:-}"
+VERBOSE="${VERBOSE:-}"
+
+# Validate options
+ks_validate_analyze_options "$DAYS" "$SINCE" "$TYPE" "$FORMAT" "$VERBOSE"
 
 # Extract events and analyze
 CONTENT=$(ks_extract_events "$DAYS" "$SINCE" "$(ks_build_filter "$TYPE" "$TOPIC")")

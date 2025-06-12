@@ -7,7 +7,6 @@ set -euo pipefail
 # Source environment and modular libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
-source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 
 # ANSI color codes
@@ -18,17 +17,63 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Define usage
-ks_define_usage "Description: Interactive tool to review findings from background analyses"
+# Generated argument parsing (INTROSPECT category)
+usage() {
+    cat << 'EOF'
+Interactive tool to review findings from background analyses
 
-# Initialize and define options
-ks_init_options
-ks_example ""
-ks_example "--list"
-ks_option "list" "" "List pending analyses without reviewing" "" "" "flag"
+Usage: review-findings [options]
+
+Options:
+  --help              Show this help
+  --list             List pending items without reviewing
+  --batch-size BATCH-SIZE Review N items at once (default: 5)
+  --detailed         Show detailed analysis
+  --interactive      Enable interactive mode
+  --confidence-threshold CONFIDENCE-THRESHOLD Filter by confidence level (default: 0.5)
+  --show-context     Include source events
+  --auto-approve     Auto-approve above threshold
+
+Examples:
+  review-findings
+  review-findings --list
+EOF
+}
+
+# Build getopt options
+LONG_OPTS="help"
+LONG_OPTS="${LONG_OPTS},list"
+LONG_OPTS="${LONG_OPTS},batch-size:"
+LONG_OPTS="${LONG_OPTS},detailed"
+LONG_OPTS="${LONG_OPTS},interactive"
+LONG_OPTS="${LONG_OPTS},confidence-threshold:"
+LONG_OPTS="${LONG_OPTS},show-context"
+LONG_OPTS="${LONG_OPTS},auto-approve"
+
+# Parse options with getopt (dummy -o h required for long options)
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || { usage; exit 1; }
+eval set -- "$OPTS"
 
 # Process options
-ks_process_options "$@"
+while true; do
+    case "$1" in
+        --help) usage; exit 0 ;;
+        --list) LIST=true; shift ;;
+        --batch-size) BATCH_SIZE="$2"; shift 2 ;;
+        --detailed) DETAILED=true; shift ;;
+        --interactive) INTERACTIVE=true; shift ;;
+        --confidence-threshold) CONFIDENCE_THRESHOLD="$2"; shift 2 ;;
+        --show-context) SHOW_CONTEXT=true; shift ;;
+        --auto-approve) AUTO_APPROVE=true; shift ;;
+        --) shift; break ;;
+        *) echo "Internal error" >&2; exit 1 ;;
+    esac
+done
+
+# Apply defaults and initialize variables
+BATCH_SIZE="${BATCH_SIZE:-5}"
+CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-0.5}"
+LIST="${LIST:-}"
 
 # Display a finding with formatting
 display_finding() {
@@ -398,7 +443,7 @@ main_review() {
 }
 
 # Handle actions based on options
-if [[ "${LIST:-false}" == "true" ]]; then
+if [[ "${LIST:-}" == "true" ]]; then
     list_pending
 else
     main_review

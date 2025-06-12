@@ -6,11 +6,9 @@ set -euo pipefail
 # Source environment and libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
-source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
-
-# Define command description
-ks_define_usage "Description: Analyze content for redundancy against existing knowledge to prevent knowledge graph pollution"
 
 # Check for background analysis results
 ks_check_background_results || true
@@ -19,49 +17,100 @@ ks_check_background_results || true
 SIMILARITY_THRESHOLD="${KS_SIMILARITY_THRESHOLD:-0.7}"
 CURATION_WINDOW="${KS_CURATION_WINDOW:-30}"
 
-# Handler for threshold validation
-ks_handle_threshold() {
-    local threshold="$1"
-    if ! echo "$threshold" | rg -q '^[0-9]*\.?[0-9]+$'; then
-        ks_error "Threshold must be a decimal number between 0.0 and 1.0"
-        exit 2
-    fi
-    THRESHOLD="$threshold"
+# Standardized usage function with custom options
+usage() {
+    declare -a arguments=(
+        "CONTENT            Content to check for duplicates (optional - reads from stdin if omitted)"
+    )
+    declare -a custom_options=(
+        "$(ks_format_option "--content CONTENT" "Content to check for duplicates")"
+        "$(ks_format_option "--type TYPE" "Knowledge type: themes, connections, insights (default: general)")"
+        "$(ks_format_option "--threshold NUM" "Similarity threshold 0.0-1.0 (default: 0.7)")"
+        "$(ks_format_option "--window DAYS" "Days to check back for duplicates (default: 30)")"
+        "$(ks_format_option "--sources LIST" "Specific sources to check (comma-separated)")"
+        "$(ks_format_option "--verbose" "Show detailed similarity analysis")"
+    )
+    declare -a examples=(
+        "curate-duplicate-knowledge --content \"Memory systems analysis\" --type themes"
+        "curate-duplicate-knowledge --threshold 0.8 --content \"Temporal knowledge patterns\""
+        "echo \"Content\" | curate-duplicate-knowledge --type insights"
+    )
+    ks_generate_usage \
+        "Analyze content for redundancy against existing knowledge to prevent knowledge graph pollution" \
+        "curate-duplicate-knowledge" \
+        "[options] [CONTENT]" \
+        "UTILS" \
+        arguments \
+        examples \
+        custom_options
 }
 
-# Initialize and define options
-ks_init_options
-ks_example "--content \"Memory systems analysis\" --type themes"
-ks_example "--threshold 0.8 --content \"Temporal knowledge patterns\""
-ks_option "content" "c" "Content to check for duplicates" "" ""
-ks_option "type" "t" "Knowledge type: themes, connections, insights" "general" ""
-ks_option "threshold" "" "Similarity threshold (0.0-1.0)" "$SIMILARITY_THRESHOLD" "ks_handle_threshold"
-ks_option "window" "w" "Days to check back for duplicates" "$CURATION_WINDOW" ""
-ks_option "sources" "s" "Specific sources to check (comma-separated)" "" ""
-ks_option "verbose" "v" "Show detailed similarity analysis" "" "" "flag"
+# Threshold validation function
+validate_threshold() {
+    local threshold="$1"
+    if ! echo "$threshold" | rg -q '^[0-9]*\.?[0-9]+$'; then
+        ks_exit_validation "Threshold must be a decimal number between 0.0 and 1.0"
+    fi
+    local valid=$(echo "$threshold" | awk '$1 >= 0.0 && $1 <= 1.0 {print "valid"}')
+    if [[ "$valid" != "valid" ]]; then
+        ks_exit_validation "Threshold must be between 0.0 and 1.0"
+    fi
+}
+
+# Build getopt options (ANALYZE subset + custom)
+LONG_OPTS="help"
+LONG_OPTS="${LONG_OPTS},content:"
+LONG_OPTS="${LONG_OPTS},type:"
+LONG_OPTS="${LONG_OPTS},threshold:"
+LONG_OPTS="${LONG_OPTS},window:"
+LONG_OPTS="${LONG_OPTS},sources:"
+LONG_OPTS="${LONG_OPTS},verbose"
+
+# Parse options with getopt (dummy -o h required for long options)
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
+eval set -- "$OPTS"
 
 # Process options
-ks_process_options "$@"
+while true; do
+    case "$1" in
+        --help) usage; exit 0 ;;
+        --content) CONTENT="$2"; shift 2 ;;
+        --type) TYPE="$2"; shift 2 ;;
+        --threshold) THRESHOLD="$2"; shift 2 ;;
+        --window) WINDOW="$2"; shift 2 ;;
+        --sources) SOURCES="$2"; shift 2 ;;
+        --verbose) VERBOSE=true; shift ;;
+        --) shift; break ;;
+        *) ks_exit_error "Internal argument parsing error" ;;
+    esac
+done
 
-# Get content from option, positional arg, or stdin
+# Apply defaults and initialize variables
 CONTENT="${CONTENT:-}"
-if [[ -z "$CONTENT" && ${#REMAINING_ARGS[@]} -gt 0 ]]; then
-    CONTENT="${REMAINING_ARGS[0]}"
+TYPE="${TYPE:-general}"
+THRESHOLD="${THRESHOLD:-$SIMILARITY_THRESHOLD}"
+WINDOW="${WINDOW:-$CURATION_WINDOW}"
+SOURCES="${SOURCES:-}"
+VERBOSE="${VERBOSE:-}"
+
+# Validate threshold
+validate_threshold "$THRESHOLD"
+
+# Get content from positional arg or stdin if not provided via --content
+if [[ -z "$CONTENT" && $# -gt 0 ]]; then
+    CONTENT="$1"
 fi
 
 if [[ -z "$CONTENT" ]]; then
     if [[ -t 0 ]]; then
-        ks_error "No content provided and stdin is empty"
-        usage
-        exit 2
+        ks_exit_validation "No content provided and stdin is empty"
     fi
     CONTENT=$(cat)
 fi
 
 # Validate content
 if [[ -z "$CONTENT" ]]; then
-    ks_error "Content cannot be empty"
-    exit 2
+    ks_exit_validation "Content cannot be empty"
 fi
 
 # Extract key terms from content for comparison
@@ -205,12 +254,12 @@ main() {
     
     # Check against recent findings
     if ! check_recent_findings "$CONTENT" "$TYPE"; then
-        exit 1
+        exit $EXIT_ERROR
     fi
     
     # Check against derived knowledge
     if ! check_derived_knowledge "$CONTENT" "$TYPE"; then
-        exit 1
+        exit $EXIT_ERROR
     fi
     
     if [[ "${VERBOSE:-}" == "true" ]]; then
@@ -219,13 +268,12 @@ main() {
         echo "Content is unique."
     fi
     
-    exit 0
+    exit $EXIT_SUCCESS
 }
 
 # Dependency check
 if ! command -v bc > /dev/null; then
-    ks_error "bc (calculator) is required for similarity calculations"
-    exit 2
+    ks_exit_error "bc (calculator) is required for similarity calculations"
 fi
 
 main

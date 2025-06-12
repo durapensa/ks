@@ -1,16 +1,13 @@
 # Workflow Tools
 
-This directory contains interactive tools that users run directly as part of their knowledge system workflow.
+**NOTE: Introspective workflow tools have moved to `tools/introspect/`**
 
-## Tools
+This directory is reserved for future workflow automation tools.
 
-- `review-findings` - Interactive review of analysis findings from background processes
+## Moved Tools
 
-## Usage
+- `review-findings` → `tools/introspect/review-findings` - Interactive review of analysis findings
 
-These tools are designed for direct user interaction, unlike the automated analysis tools in `tools/analyze/`.
+## See Also
 
-Run tools from the project root:
-```bash
-tools/workflow/review-findings
-```
+- `tools/introspect/` - Human introspection and reflection tools

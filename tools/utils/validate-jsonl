@@ -6,27 +6,58 @@ set -euo pipefail
 
 # Source configuration and libraries
 source "${0%/*}/../../.ks-env"
-source "$KS_ROOT/lib/argparse.sh"
 
-# Define usage
-ks_define_usage "Description: Validate JSONL file format"
+# Simple argument parsing (UTILS category)
+usage() {
+    cat << 'EOF'
+Validate JSONL file format
 
-# Initialize and define examples
-ks_init_options
-ks_example "knowledge/events/2024-03-15.jsonl"
-ks_example "\$KS_HOT_LOG"
+Usage: validate-jsonl [options] FILE
 
-# Process options
-ks_process_options "$@"
+Arguments:
+  FILE               Path to JSONL file to validate
 
-# Get file argument
-if [[ ${#REMAINING_ARGS[@]} -ne 1 ]]; then
-    echo "Error: Exactly one file argument required" >&2
+Options:
+  --help             Show this help
+
+Examples:
+  validate-jsonl knowledge/events/2024-03-15.jsonl
+  validate-jsonl $KS_HOT_LOG
+EOF
+}
+
+# Simple argument parsing for utilities
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --help)
+            usage
+            exit 0
+            ;;
+        --*)
+            echo "Unknown option: $1" >&2
+            usage
+            exit 1
+            ;;
+        *)
+            # First non-option argument is the file
+            if [[ -z "${FILE:-}" ]]; then
+                FILE="$1"
+            else
+                echo "Error: Multiple file arguments not supported" >&2
+                usage
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Validate file argument
+if [[ -z "${FILE:-}" ]]; then
+    echo "Error: FILE argument required" >&2
     usage
     exit 1
 fi
-
-FILE="${REMAINING_ARGS[0]}"
 
 if [ ! -f "$FILE" ]; then
     echo "Error: File '$FILE' not found" >&2

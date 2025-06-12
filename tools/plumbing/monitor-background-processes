@@ -6,38 +6,94 @@ set -euo pipefail
 # Source environment and libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
-source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/process.sh"
-
-# Define command description
-ks_define_usage "Description: Monitor and manage background analysis processes"
 
 # Check for background analysis results
 ks_check_background_results || true
 
-# Initialize and define options
-ks_init_options
-ks_example "--status"
-ks_example "--kill-stale"
+# Generated argument parsing (PLUMBING category)
+usage() {
+    cat << 'EOF'
+Monitor and manage background analysis processes
 
-# Action flags (mutually exclusive)
-ks_option "status" "" "Show current process status (default)" "" "" "flag"
-ks_option "active" "" "List only active processes" "" "" "flag"
-ks_option "completed" "" "List only completed processes" "" "" "flag"
-ks_option "failed" "" "List only failed processes" "" "" "flag"
-ks_option "cleanup" "" "Clean up stale process entries" "" "" "flag"
-ks_option "kill-stale" "" "Kill stale active processes" "" "" "flag"
-ks_option "history" "" "Show process history" "" "" "flag"
+Usage: monitor-background-processes [options]
 
-# Options with arguments
-ks_option "archive-old" "" "Archive process records older than N days" "" ""
+Options:
+  --help              Show this help
+  --verbose          Show detailed output
+  --dry-run          Show what would be done
+  --force            Force operation
+  --status           Show status
+  --active           Show active only
+  --completed        Show completed only
+  --failed           Show failed only
+  --cleanup          Clean up stale entries
+  --kill-stale       Kill stale processes
+  --history          Show process history
+  --archive-old DAYS Archive records older than N days
+  --json-output      Machine-readable JSON output
 
-# Modifier flags
-ks_option "dry-run" "" "Show what would be done without changes" "" "" "flag"
+Examples:
+  monitor-background-processes --status
+  monitor-background-processes --kill-stale
+  monitor-background-processes --cleanup --dry-run
+EOF
+}
+
+# Build getopt options
+LONG_OPTS="help"
+LONG_OPTS="${LONG_OPTS},verbose"
+LONG_OPTS="${LONG_OPTS},dry-run"
+LONG_OPTS="${LONG_OPTS},force"
+LONG_OPTS="${LONG_OPTS},status"
+LONG_OPTS="${LONG_OPTS},active"
+LONG_OPTS="${LONG_OPTS},completed"
+LONG_OPTS="${LONG_OPTS},failed"
+LONG_OPTS="${LONG_OPTS},cleanup"
+LONG_OPTS="${LONG_OPTS},kill-stale"
+LONG_OPTS="${LONG_OPTS},history"
+LONG_OPTS="${LONG_OPTS},archive-old:"
+LONG_OPTS="${LONG_OPTS},json-output"
+
+# Parse options with getopt (dummy -o h required for long options)
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || { usage; exit 1; }
+eval set -- "$OPTS"
 
 # Process options
-ks_process_options "$@"
+while true; do
+    case "$1" in
+        --help) usage; exit 0 ;;
+        --verbose) VERBOSE=true; shift ;;
+        --dry-run) DRY_RUN=true; shift ;;
+        --force) FORCE=true; shift ;;
+        --status) STATUS=true; shift ;;
+        --active) ACTIVE=true; shift ;;
+        --completed) COMPLETED=true; shift ;;
+        --failed) FAILED=true; shift ;;
+        --cleanup) CLEANUP=true; shift ;;
+        --kill-stale) KILL_STALE=true; shift ;;
+        --history) HISTORY=true; shift ;;
+        --archive-old) ARCHIVE_OLD="$2"; shift 2 ;;
+        --json-output) JSON_OUTPUT=true; shift ;;
+        --) shift; break ;;
+        *) echo "Internal error" >&2; exit 1 ;;
+    esac
+done
+
+# Apply defaults and initialize variables
+VERBOSE="${VERBOSE:-}"
+DRY_RUN="${DRY_RUN:-}"
+FORCE="${FORCE:-}"
+STATUS="${STATUS:-}"
+ACTIVE="${ACTIVE:-}"
+COMPLETED="${COMPLETED:-}"
+FAILED="${FAILED:-}"
+CLEANUP="${CLEANUP:-}"
+KILL_STALE="${KILL_STALE:-}"
+HISTORY="${HISTORY:-}"
+ARCHIVE_OLD="${ARCHIVE_OLD:-}"
+JSON_OUTPUT="${JSON_OUTPUT:-}"
 
 # Show process status
 show_status() {
@@ -325,19 +381,19 @@ show_history() {
 
 # Determine action from flags
 ACTION=""
-if [[ "${ACTIVE:-}" == "true" ]]; then
+if [[ "$ACTIVE" == "true" ]]; then
     ACTION="active"
-elif [[ "${COMPLETED:-}" == "true" ]]; then
+elif [[ "$COMPLETED" == "true" ]]; then
     ACTION="completed"
-elif [[ "${FAILED:-}" == "true" ]]; then
+elif [[ "$FAILED" == "true" ]]; then
     ACTION="failed"
-elif [[ "${CLEANUP:-}" == "true" ]]; then
+elif [[ "$CLEANUP" == "true" ]]; then
     ACTION="cleanup"
-elif [[ "${KILL_STALE:-}" == "true" ]]; then
+elif [[ "$KILL_STALE" == "true" ]]; then
     ACTION="kill-stale"
-elif [[ "${HISTORY:-}" == "true" ]]; then
+elif [[ "$HISTORY" == "true" ]]; then
     ACTION="history"
-elif [[ -n "${ARCHIVE_OLD:-}" ]]; then
+elif [[ -n "$ARCHIVE_OLD" ]]; then
     ACTION="archive-old"
 else
     ACTION="status"  # Default
@@ -361,7 +417,7 @@ case "$ACTION" in
         cleanup_stale
         ;;
     archive-old)
-        archive_old_processes "${ARCHIVE_OLD}" "${DRY_RUN:-false}"
+        archive_old_processes "$ARCHIVE_OLD" "$DRY_RUN"
         ;;
     kill-stale)
         kill_stale_processes

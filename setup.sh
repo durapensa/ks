@@ -17,12 +17,12 @@ fi
 # Parse command line arguments only when executed (not sourced)
 SETUP_GO=0
 if [[ $SOURCED -eq 0 ]] && [[ $# -gt 0 ]]; then
-    # Use GNU getopt with full path on macOS to avoid PATH manipulation
-    local getopt_cmd="getopt"
+    # Use util-linux getopt with full path on macOS to avoid PATH manipulation
+    getopt_cmd="getopt"
     if [[ "$OSTYPE" == "darwin"* ]] && command -v brew >/dev/null 2>&1; then
-        local gnu_getopt_path="$(brew --prefix)/opt/gnu-getopt/bin/getopt"
-        if [[ -x "$gnu_getopt_path" ]]; then
-            getopt_cmd="$gnu_getopt_path"
+        util_linux_getopt_path="$(brew --prefix util-linux)/bin/getopt"
+        if [[ -x "$util_linux_getopt_path" ]]; then
+            getopt_cmd="$util_linux_getopt_path"
         fi
     fi
     
@@ -69,17 +69,20 @@ check_dependencies() {
     command -v python3 >/dev/null 2>&1 || missing_deps+=("python3")
     
     # Additional bash tools for cleaner scripts
-    command -v gnu-getopt >/dev/null 2>&1 || command -v getopt >/dev/null 2>&1 || missing_deps+=("gnu-getopt")
     command -v sd >/dev/null 2>&1 || missing_deps+=("sd")
     command -v rg >/dev/null 2>&1 || missing_deps+=("ripgrep")
     command -v parallel >/dev/null 2>&1 || missing_deps+=("parallel")
     command -v watchexec >/dev/null 2>&1 || missing_deps+=("watchexec")
     
-    # GNU tools for macOS compatibility
+    # GNU tools for macOS compatibility 
     if [[ "$OSTYPE" == "darwin"* ]]; then
         command -v gdate >/dev/null 2>&1 || missing_deps+=("coreutils")
         command -v gfind >/dev/null 2>&1 || missing_deps+=("findutils")
-        command -v flock >/dev/null 2>&1 || missing_deps+=("util-linux")
+        # util-linux provides both getopt and flock
+        (command -v getopt >/dev/null 2>&1 && command -v flock >/dev/null 2>&1) || missing_deps+=("util-linux")
+    else
+        # Linux systems typically have getopt and flock built-in via util-linux
+        (command -v getopt >/dev/null 2>&1 && command -v flock >/dev/null 2>&1) || missing_deps+=("util-linux")
     fi
     
     # Check for modern bash (5.x+)

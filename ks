@@ -5,9 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -f "$SCRIPT_DIR/.ks-env" ]] && source "$SCRIPT_DIR/.ks-env"
-source "$KS_ROOT/lib/argparse.sh"
 
-ks_define_usage "Knowledge system CLI wrapper with dynamic subcommands"
 declare -A TOOL_MAP TOOL_CATEGORIES
 
 # === CORE FUNCTIONS ===
@@ -61,7 +59,7 @@ show_usage() {
     fi
     
     # Display by hardcoded categories (for now)  
-    for category in capture analyze workflow plumbing utils; do
+    for category in capture analyze introspect plumbing utils; do
         local has_tools=false
         for subcommand in $(printf '%s\n' "${!TOOL_MAP[@]}" | sort); do
             if [[ "${TOOL_CATEGORIES[$subcommand]}" == "$category" ]]; then

@@ -9,26 +9,70 @@ source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/files.sh"
 source "$KS_ROOT/lib/time.sh"
-source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/lib/validation.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/claude.sh"
-
-# Define command description
-ks_define_usage "Description: Identify recurring patterns in thought events using AI analysis"
+source "$KS_ROOT/tools/lib/analysis.sh"
 
 # Check for background analysis results
 ks_check_background_results || true
 
-# Initialize and define options
-ks_init_options
-ks_example "--days 30"
-ks_example "--since 2024-01-01 --format markdown"
-ks_option "days" "d" "Analyze events from last N days" "30" "ks_handle_days"
-ks_option "since" "s" "Analyze events since ISO date (overrides --days)" "" "ks_handle_since"
-ks_option "format" "f" "Output format: text, json, markdown" "text" "ks_handle_format"
+# Generated argument parsing (ANALYZE category)
+usage() {
+    cat << 'EOF'
+Identify recurring patterns in thought events using AI analysis
 
-# Process options - this sets DAYS, SINCE, FORMAT variables
-ks_process_options "$@"
+Usage: identify-recurring-thought-patterns [options]
+
+Options:
+  --help              Show this help
+  --days DAYS        Analyze events from last N days (default: 30)
+  --since SINCE      Analyze events since ISO date
+  --type TYPE        Filter by event type
+  --format FORMAT    Output format (default: text)
+  --verbose          Show detailed output
+
+Examples:
+  identify-recurring-thought-patterns --days 30
+  identify-recurring-thought-patterns --since 2024-01-01 --format markdown
+EOF
+}
+
+# Build getopt options
+LONG_OPTS="help"
+LONG_OPTS="${LONG_OPTS},days:"
+LONG_OPTS="${LONG_OPTS},since:"
+LONG_OPTS="${LONG_OPTS},type:"
+LONG_OPTS="${LONG_OPTS},format:"
+LONG_OPTS="${LONG_OPTS},verbose"
+
+# Parse options with getopt (dummy -o h required for long options)
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || { usage; exit 1; }
+eval set -- "$OPTS"
+
+# Process options
+while true; do
+    case "$1" in
+        --help) usage; exit 0 ;;
+        --days) DAYS="$2"; shift 2 ;;
+        --since) SINCE="$2"; shift 2 ;;
+        --type) TYPE="$2"; shift 2 ;;
+        --format) FORMAT="$2"; shift 2 ;;
+        --verbose) VERBOSE=true; shift ;;
+        --) shift; break ;;
+        *) echo "Internal error" >&2; exit 1 ;;
+    esac
+done
+
+# Apply defaults and initialize variables
+DAYS="${DAYS:-30}"
+FORMAT="${FORMAT:-text}"
+SINCE="${SINCE:-}"
+TYPE="${TYPE:-}"
+VERBOSE="${VERBOSE:-}"
+
+# Validate options
+ks_validate_analyze_options "$DAYS" "$SINCE" "$TYPE" "$FORMAT" "$VERBOSE"
 
 # Extract only thought events
 CONTENT=$(ks_extract_events "$DAYS" "$SINCE" ".type == \"thought\"")

@@ -6,11 +6,7 @@ set -euo pipefail
 # Source configuration and libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
-source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
-
-# Define command description
-ks_define_usage "Description: Rotate knowledge event logs from hot to archive"
 
 # Check for background analysis results
 ks_check_background_results || true
@@ -20,17 +16,64 @@ DEFAULT_MAX_SIZE=5242880     # 5MB default
 DEFAULT_MAX_AGE=168          # 7 days default (in hours)
 DEFAULT_MAX_EVENTS=1000      # 1000 events default
 
-# Initialize and define options
-ks_init_options
-ks_example "--max-size 10485760"
-ks_example "--force"
-ks_option "force" "f" "Force rotation regardless of thresholds" "" "" "flag"
-ks_option "max-size" "s" "Rotate when file exceeds size in bytes" "$DEFAULT_MAX_SIZE" ""
-ks_option "max-age" "a" "Rotate when oldest event exceeds age in hours" "$DEFAULT_MAX_AGE" ""
-ks_option "max-events" "e" "Rotate when event count exceeds limit" "$DEFAULT_MAX_EVENTS" ""
+# Custom argument parsing (PLUMBING category + rotation-specific options)
+usage() {
+    cat << 'EOF'
+Rotate knowledge event logs from hot to archive
+
+Usage: rotate-logs [options]
+
+Options:
+  --help              Show this help
+  --verbose          Show detailed output
+  --dry-run          Show what would be done
+  --force            Force rotation regardless of thresholds
+  --max-size SIZE    Rotate when file exceeds size in bytes (default: 5242880)
+  --max-age HOURS    Rotate when oldest event exceeds age in hours (default: 168)
+  --max-events COUNT Rotate when event count exceeds limit (default: 1000)
+
+Examples:
+  rotate-logs --max-size 10485760
+  rotate-logs --force
+  rotate-logs --dry-run --verbose
+EOF
+}
+
+# Build getopt options (PLUMBING + custom)
+LONG_OPTS="help"
+LONG_OPTS="${LONG_OPTS},verbose"
+LONG_OPTS="${LONG_OPTS},dry-run"
+LONG_OPTS="${LONG_OPTS},force"
+LONG_OPTS="${LONG_OPTS},max-size:"
+LONG_OPTS="${LONG_OPTS},max-age:"
+LONG_OPTS="${LONG_OPTS},max-events:"
+
+# Parse options with getopt (dummy -o h required for long options)
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || { usage; exit 1; }
+eval set -- "$OPTS"
 
 # Process options
-ks_process_options "$@"
+while true; do
+    case "$1" in
+        --help) usage; exit 0 ;;
+        --verbose) VERBOSE=true; shift ;;
+        --dry-run) DRY_RUN=true; shift ;;
+        --force) FORCE=true; shift ;;
+        --max-size) MAX_SIZE="$2"; shift 2 ;;
+        --max-age) MAX_AGE="$2"; shift 2 ;;
+        --max-events) MAX_EVENTS="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) echo "Internal error" >&2; exit 1 ;;
+    esac
+done
+
+# Apply defaults and initialize variables
+VERBOSE="${VERBOSE:-}"
+DRY_RUN="${DRY_RUN:-}"
+FORCE="${FORCE:-}"
+MAX_SIZE="${MAX_SIZE:-$DEFAULT_MAX_SIZE}"
+MAX_AGE="${MAX_AGE:-$DEFAULT_MAX_AGE}"
+MAX_EVENTS="${MAX_EVENTS:-$DEFAULT_MAX_EVENTS}"
 
 # Ensure directories exist
 ks_ensure_dirs
@@ -51,22 +94,22 @@ fi
 
 # Function to check if rotation is needed
 should_rotate() {
-    if [[ "${FORCE:-}" == "true" ]]; then
+    if [[ "$FORCE" == "true" ]]; then
         echo "Force rotation requested"
         return 0
     fi
     
     # Check file size
     local file_size=$($KS_STAT -c%s "$KS_HOT_LOG" 2>/dev/null || echo 0)
-    if [[ "$file_size" -gt "${MAX_SIZE:-$DEFAULT_MAX_SIZE}" ]]; then
-        echo "File size ($file_size bytes) exceeds limit (${MAX_SIZE:-$DEFAULT_MAX_SIZE} bytes)"
+    if [[ "$file_size" -gt "$MAX_SIZE" ]]; then
+        echo "File size ($file_size bytes) exceeds limit ($MAX_SIZE bytes)"
         return 0
     fi
     
     # Check event count
     local event_count=$(wc -l < "$KS_HOT_LOG" | tr -d ' ')
-    if [[ "$event_count" -gt "${MAX_EVENTS:-$DEFAULT_MAX_EVENTS}" ]]; then
-        echo "Event count ($event_count) exceeds limit (${MAX_EVENTS:-$DEFAULT_MAX_EVENTS})"
+    if [[ "$event_count" -gt "$MAX_EVENTS" ]]; then
+        echo "Event count ($event_count) exceeds limit ($MAX_EVENTS)"
         return 0
     fi
     
@@ -78,8 +121,8 @@ should_rotate() {
         local current_epoch=$EPOCHSECONDS
         local age_hours=$(( (current_epoch - first_epoch) / 3600 ))
         
-        if [[ "$age_hours" -gt "${MAX_AGE:-$DEFAULT_MAX_AGE}" ]]; then
-            echo "Oldest event age (${age_hours}h) exceeds limit (${MAX_AGE:-$DEFAULT_MAX_AGE}h)"
+        if [[ "$age_hours" -gt "$MAX_AGE" ]]; then
+            echo "Oldest event age (${age_hours}h) exceeds limit (${MAX_AGE}h)"
             return 0
         fi
     fi

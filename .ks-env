@@ -28,7 +28,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     export KS_STAT="gstat"
     export KS_FIND="gfind"
     export KS_FLOCK="flock"      # from util-linux package
-    export KS_GETOPT="$(brew --prefix gnu-getopt)/bin/getopt"    # from gnu-getopt package
+    export KS_GETOPT="$(brew --prefix util-linux)/bin/getopt"    # from util-linux package
 else
     # Linux with native GNU tools
     export KS_DATE="date"
