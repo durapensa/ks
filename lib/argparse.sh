@@ -199,9 +199,13 @@ ks_parse_category_args() {
             local var_name="${long//-/_}"
             var_name="${var_name^^}"
             
-            # Only set default if variable is empty
-            if [[ -z "${!var_name:-}" ]] && [[ "$default" != "BOOL" ]]; then
-                declare -g "$var_name=$default"
+            # Initialize all variables, even if empty
+            if [[ "$default" == "BOOL" ]]; then
+                # Boolean variables default to empty (false)
+                declare -g "$var_name=${!var_name:-}"
+            else
+                # Set default value or empty string
+                declare -g "$var_name=${!var_name:-$default}"
             fi
         done <<< "$options"
     fi
@@ -317,4 +321,23 @@ ks_get_mode() {
     else
         echo "silent"
     fi
+}
+
+# Helper to determine action from boolean flags
+# Usage: ACTION=$(ks_determine_action default_action flag1:action1 flag2:action2 ...)
+# Example: ACTION=$(ks_determine_action "status" "$ACTIVE:active" "$COMPLETED:completed")
+ks_determine_action() {
+    local default_action="$1"
+    shift
+    
+    for mapping in "$@"; do
+        local flag="${mapping%%:*}"
+        local action="${mapping#*:}"
+        if [[ "$flag" == "true" ]]; then
+            echo "$action"
+            return
+        fi
+    done
+    
+    echo "$default_action"
 }

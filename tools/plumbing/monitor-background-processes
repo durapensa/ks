@@ -8,6 +8,7 @@ source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/error.sh"
 source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/process.sh"
 
@@ -31,23 +32,9 @@ usage() {
         examples
 }
 
-# Build getopt options
-LONG_OPTS="help"
-LONG_OPTS="${LONG_OPTS},verbose"
-LONG_OPTS="${LONG_OPTS},dry-run"
-LONG_OPTS="${LONG_OPTS},force"
-LONG_OPTS="${LONG_OPTS},status"
-LONG_OPTS="${LONG_OPTS},active"
-LONG_OPTS="${LONG_OPTS},completed"
-LONG_OPTS="${LONG_OPTS},failed"
-LONG_OPTS="${LONG_OPTS},cleanup"
-LONG_OPTS="${LONG_OPTS},kill-stale"
-LONG_OPTS="${LONG_OPTS},history"
-LONG_OPTS="${LONG_OPTS},archive-old:"
-LONG_OPTS="${LONG_OPTS},json-output"
-
-# Parse options with getopt (dummy -o h required for long options)
-OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
+# Parse arguments with custom options
+CUSTOM_LONG_OPTS="kill-stale,history,archive-old:,json-output"
+OPTS=$(ks_parse_custom_args "PLUMBING" "$CUSTOM_LONG_OPTS" -- "$@")
 eval set -- "$OPTS"
 
 # Process options
@@ -71,7 +58,7 @@ while true; do
     esac
 done
 
-# Apply defaults and initialize variables
+# Apply defaults
 VERBOSE="${VERBOSE:-}"
 DRY_RUN="${DRY_RUN:-}"
 FORCE="${FORCE:-}"
@@ -370,24 +357,16 @@ show_history() {
 }
 
 # Determine action from flags
-ACTION=""
-if [[ "$ACTIVE" == "true" ]]; then
-    ACTION="active"
-elif [[ "$COMPLETED" == "true" ]]; then
-    ACTION="completed"
-elif [[ "$FAILED" == "true" ]]; then
-    ACTION="failed"
-elif [[ "$CLEANUP" == "true" ]]; then
-    ACTION="cleanup"
-elif [[ "$KILL_STALE" == "true" ]]; then
-    ACTION="kill-stale"
-elif [[ "$HISTORY" == "true" ]]; then
-    ACTION="history"
-elif [[ -n "$ARCHIVE_OLD" ]]; then
-    ACTION="archive-old"
-else
-    ACTION="status"  # Default
-fi
+ACTION=$(ks_determine_action "status" \
+    "$ACTIVE:active" \
+    "$COMPLETED:completed" \
+    "$FAILED:failed" \
+    "$CLEANUP:cleanup" \
+    "$KILL_STALE:kill-stale" \
+    "$HISTORY:history")
+
+# Special case for archive-old which has a parameter
+[[ -n "$ARCHIVE_OLD" ]] && ACTION="archive-old"
 
 # Execute action
 case "$ACTION" in

@@ -12,6 +12,7 @@ source "$KS_ROOT/lib/time.sh"
 source "$KS_ROOT/lib/validation.sh"
 source "$KS_ROOT/lib/error.sh"
 source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/claude.sh"
 source "$KS_ROOT/tools/lib/analysis.sh"
@@ -35,38 +36,8 @@ usage() {
         examples
 }
 
-# Build getopt options
-LONG_OPTS="help"
-LONG_OPTS="${LONG_OPTS},days:"
-LONG_OPTS="${LONG_OPTS},since:"
-LONG_OPTS="${LONG_OPTS},type:"
-LONG_OPTS="${LONG_OPTS},format:"
-LONG_OPTS="${LONG_OPTS},verbose"
-
-# Parse options with getopt (dummy -o h required for long options)
-OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
-eval set -- "$OPTS"
-
-# Process options
-while true; do
-    case "$1" in
-        --help) usage; exit 0 ;;
-        --days) DAYS="$2"; shift 2 ;;
-        --since) SINCE="$2"; shift 2 ;;
-        --type) TYPE="$2"; shift 2 ;;
-        --format) FORMAT="$2"; shift 2 ;;
-        --verbose) VERBOSE=true; shift ;;
-        --) shift; break ;;
-        *) ks_exit_error "Internal argument parsing error" ;;
-    esac
-done
-
-# Apply defaults and initialize variables
-DAYS="${DAYS:-30}"
-FORMAT="${FORMAT:-text}"
-SINCE="${SINCE:-}"
-TYPE="${TYPE:-}"
-VERBOSE="${VERBOSE:-}"
+# Parse arguments using the new library
+ks_parse_category_args "ANALYZE" -- "$@"
 
 # Validate options
 ks_validate_analyze_options "$DAYS" "$SINCE" "$TYPE" "$FORMAT" "$VERBOSE"

@@ -17,7 +17,8 @@ verbose|v|Show detailed output|BOOL"
 # Split patterns for input vs search
 KS_CATEGORY_OPTIONS["CAPTURE_INPUT"]="format|f|Output format|text"
 
-KS_CATEGORY_OPTIONS["CAPTURE_SEARCH"]="days|d|Search last N days|7
+KS_CATEGORY_OPTIONS["CAPTURE_SEARCH"]="days|d|Search last N days|
+since||Search since ISO date|
 search||Search term|
 type|t|Filter by event type|
 topic|p|Filter by topic|
