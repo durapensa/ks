@@ -87,7 +87,7 @@ show_usage() {
 }
 
 show_all_help() {
-    echo "ks --help"
+    echo "ks --allhelp"
     show_usage true
     echo
     parallel_process_tools process_tool_help
