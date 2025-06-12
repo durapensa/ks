@@ -12,58 +12,68 @@ ks_define_usage "Knowledge system CLI wrapper with dynamic subcommands"
 
 # Tool discovery (must be defined before usage function)
 declare -A TOOL_MAP
+declare -A TOOL_CATEGORIES
+
 discover_tools() {
+    local find_cmd="${KS_FIND:-gfind}"
+    
     while IFS= read -r tool; do
-        local dir_name="${tool%/*}"
         local basename="${tool##*/}"
+        local category="${tool%/*}"
+        category="${category#./}"  # Remove leading ./
         
-        if [[ "$dir_name" == "./capture" ]]; then
-            TOOL_MAP["$basename"]="$KS_ROOT/tools/${tool#./}"
-        else
-            TOOL_MAP["${dir_name#./}-${basename}"]="$KS_ROOT/tools/${tool#./}"
-        fi
-    done < <(cd "$KS_ROOT/tools" && $KS_FIND . -type f -executable ! -name "*.*")
+        TOOL_MAP["$basename"]="$KS_ROOT/tools/${tool#./}"
+        TOOL_CATEGORIES["$basename"]="$category"
+    done < <(cd "$KS_ROOT/tools" && $find_cmd . -type f -executable ! -name "*.*" | sort)
 }
 
 # Custom usage function that shows available subcommands
 usage() {
-    echo "Usage: ${0##*/} [options] [subcommand] [args...]"
-    echo ""
-    echo "When no subcommand is provided, enters interactive capture mode."
+    discover_tools
+    
+    echo "Usage: ${0##*/} [OPTION]... [SUBCOMMAND] [ARGS]..."
+    echo "Knowledge system CLI for interactive capture and analysis."
     echo ""
     echo "Available subcommands:"
     
-    # Use existing TOOL_MAP if already populated
-    if [[ ${#TOOL_MAP[@]} -eq 0 ]]; then
-        discover_tools
-    fi
-    
-    # Group by category for better display
-    local -A categories
-    for subcommand in "${!TOOL_MAP[@]}"; do
-        local tool="${TOOL_MAP[$subcommand]}"
-        local rel_path="${tool#$KS_ROOT/tools/}"
-        local category="${rel_path%/*}"
-        categories["$category"]+="$subcommand "
-    done
-    
-    for category in $(printf '%s\n' "${!categories[@]}" | sort); do
-        echo "  $category:"
-        for subcommand in ${categories[$category]}; do
-            printf "    %-20s → %s\n" "$subcommand" "${TOOL_MAP[$subcommand]#$KS_ROOT/}"
+    # Group by categories we know exist
+    for category in capture analyze workflow plumbing utils; do
+        local has_tools=false
+        for subcommand in $(printf '%s\n' "${!TOOL_MAP[@]}" | sort); do
+            if [[ "${TOOL_CATEGORIES[$subcommand]}" == "$category" ]]; then
+                if [[ "$has_tools" == false ]]; then
+                    echo "  ${category^^}:"
+                    has_tools=true
+                fi
+                
+                # Simple descriptions based on tool names
+                case "$subcommand" in
+                    events) printf "    %-20s %s\n" "$subcommand" "append events to knowledge stream" ;;
+                    query) printf "    %-20s %s\n" "$subcommand" "search existing knowledge" ;;
+                    extract-themes) printf "    %-20s %s\n" "$subcommand" "identify key themes from events" ;;
+                    find-connections) printf "    %-20s %s\n" "$subcommand" "discover relationships between concepts" ;;
+                    curate-duplicate-knowledge) printf "    %-20s %s\n" "$subcommand" "detect redundant insights" ;;
+                    identify-recurring-thought-patterns) printf "    %-20s %s\n" "$subcommand" "analyze thinking patterns" ;;
+                    review-findings) printf "    %-20s %s\n" "$subcommand" "review and approve analysis results" ;;
+                    check-event-triggers) printf "    %-20s %s\n" "$subcommand" "monitor background analysis triggers" ;;
+                    monitor-background-processes) printf "    %-20s %s\n" "$subcommand" "track system processes" ;;
+                    rotate-logs) printf "    %-20s %s\n" "$subcommand" "manage log file rotation" ;;
+                    validate-jsonl) printf "    %-20s %s\n" "$subcommand" "verify JSONL file format" ;;
+                    *) printf "    %-20s %s\n" "$subcommand" "tool description" ;;
+                esac
+            fi
         done
+        [[ "$has_tools" == true ]] && echo ""
     done
     
-    echo ""
     echo "Options:"
-    echo "  -h, --help          Show this help message"
-    echo "      --allhelp       Show help for all available tools"
+    echo "  -h, --help           show this help and exit"
+    echo "      --allhelp        show help for all tools"
     echo ""
     echo "Examples:"
-    echo "  ${0##*/}                    # Interactive mode with Claude"
-    echo "  ${0##*/} events thought \"topic\" \"content\""
-    echo "  ${0##*/} query --days 7 \"search term\""
-    echo "  ${0##*/} analyze-extract-themes --format json"
+    echo "  ${0##*/}                   start interactive mode with Claude"
+    echo "  ${0##*/} events thought \"learning\" \"new insight\""
+    echo "  ${0##*/} query \"search term\""
 }
 
 # Handle subcommands before processing ks options
@@ -93,21 +103,16 @@ ks_process_options "$@"
 
 # Helper function for parallel processing
 process_tool_help() {
-    local subcommand="$1"
-    local tool_path="${TOOL_MAP[$subcommand]#$KS_ROOT/}"
-    local tool_file="${TOOL_MAP[$subcommand]}"
+    local tool_file="$1"
+    local tool_path="${tool_file#$KS_ROOT/}"
     
-    echo "$tool_path --help"
-    "$tool_file" --help 2>/dev/null || echo "No help available"
-    echo
-    echo "$tool_path --examples"
-    "$tool_file" --examples 2>/dev/null || echo "No examples available"
+    echo "$tool_path --help --examples"
+    "$tool_file" --help --examples 2>/dev/null || echo "No help or examples available"
     echo
 }
 
-# Export function and TOOL_MAP for parallel
+# Export function for parallel
 export -f process_tool_help
-export TOOL_MAP
 export KS_ROOT
 
 # Show all help using GNU parallel for speed with order preservation
@@ -117,7 +122,7 @@ show_all_help() {
     echo
     
     # Use GNU parallel with --keep-order to preserve tool ordering
-    printf '%s\n' "${!TOOL_MAP[@]}" | sort | parallel --keep-order process_tool_help
+    printf '%s\n' "${TOOL_MAP[@]}" | sort | parallel --keep-order process_tool_help
 }
 
 # Check pending analyses
