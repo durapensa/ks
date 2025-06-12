@@ -205,6 +205,8 @@ ks_usage() {
 ks_process_options() {
     local script_name="${0##*/}"
     declare -g -a REMAINING_ARGS=()
+    local show_help=false
+    local show_examples=false
     
     # Build getopt strings from definitions
     local short_opts=""
@@ -238,19 +240,12 @@ ks_process_options() {
     while true; do
         case "$1" in
             -h|--help)
-                usage
-                exit 0
+                show_help=true
+                shift
                 ;;
             --examples)
-                if [[ ${#KS_EXAMPLES[@]} -gt 0 ]]; then
-                    echo "Examples:"
-                    for example in "${KS_EXAMPLES[@]}"; do
-                        echo "  ${0##*/} $example"
-                    done
-                else
-                    echo "No examples available"
-                fi
-                exit 0
+                show_examples=true
+                shift
                 ;;
             --)
                 shift
@@ -301,6 +296,25 @@ ks_process_options() {
                 ;;
         esac
     done
+    
+    # Handle help/examples after all options processed
+    if [[ "$show_help" == true ]]; then
+        usage
+        [[ "$show_examples" == false ]] && exit 0
+        echo ""
+    fi
+    
+    if [[ "$show_examples" == true ]]; then
+        if [[ ${#KS_EXAMPLES[@]} -gt 0 ]]; then
+            echo "Examples:"
+            for example in "${KS_EXAMPLES[@]}"; do
+                echo "  ${0##*/} $example"
+            done
+        else
+            echo "No examples available"
+        fi
+        exit 0
+    fi
     
     # Apply defaults for unset options (including empty defaults)
     for name in "${!KS_OPTIONS_LONG[@]}"; do
