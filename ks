@@ -47,13 +47,16 @@ export -f extract_description
 
 # Custom usage function that shows available subcommands
 usage() {
+    local skip_descriptions="${1:-false}"
     discover_tools
     
-    # Extract all tool descriptions upfront using parallel processing
+    # Extract all tool descriptions upfront using parallel processing (unless skipped)
     declare -A TOOL_DESCRIPTIONS
-    while IFS=: read -r tool_name description; do
-        TOOL_DESCRIPTIONS["$tool_name"]="$description"
-    done < <(parallel_process_tools extract_description)
+    if [[ "$skip_descriptions" != "true" ]]; then
+        while IFS=: read -r tool_name description; do
+            TOOL_DESCRIPTIONS["$tool_name"]="$description"
+        done < <(parallel_process_tools extract_description)
+    fi
     
     echo "Description: Knowledge system CLI for interactive capture and analysis."
     echo ""
@@ -131,7 +134,7 @@ export KS_ROOT
 # Show all help using GNU parallel for speed with order preservation
 show_all_help() {
     echo "ks --help"
-    usage
+    usage true  # Skip descriptions since we're showing full help
     echo
     
     # Use generalized parallel processing
