@@ -42,8 +42,6 @@ extract_description() {
     echo "$basename:$desc"
 }
 
-# Export functions for parallel
-export -f extract_description
 
 # Custom usage function that shows available subcommands
 usage() {
@@ -92,22 +90,27 @@ usage() {
     echo "  ${0##*/} query \"search term\""
 }
 
-# Handle subcommands before processing ks options
-# This prevents subcommand --help from being intercepted by ks
-if [[ $# -gt 0 && "$1" != --* ]]; then
-    # This is a subcommand, handle it directly
-    discover_tools
-    
-    subcommand="$1"
+# Cache tool discovery once at startup
+discover_tools
+
+# Consolidated subcommand handler
+handle_subcommand() {
+    local subcommand="$1"
     shift
     
     if [[ -n "${TOOL_MAP[$subcommand]:-}" ]]; then
         exec "${TOOL_MAP[$subcommand]}" "$@"
     else
         echo "Unknown subcommand: $subcommand"
-        echo "Run '${0##*/} --help' to see available subcommands"
+        echo "Available: $(printf '%s ' "${!TOOL_MAP[@]}" | sort)"
         exit 1
     fi
+}
+
+# Handle subcommands before processing ks options
+# This prevents subcommand --help from being intercepted by ks
+if [[ $# -gt 0 && "$1" != --* ]]; then
+    handle_subcommand "$@"
 fi
 
 # Initialize and define options
@@ -127,8 +130,8 @@ process_tool_help() {
     echo
 }
 
-# Export functions for parallel
-export -f process_tool_help
+# All exports in one place
+export -f extract_description process_tool_help
 export KS_ROOT
 
 # Show all help using GNU parallel for speed with order preservation
@@ -143,26 +146,22 @@ show_all_help() {
 
 # Check pending analyses
 check_pending() {
-    if [[ -f "$KS_ROOT/lib/core.sh" && -f "$KS_ROOT/tools/lib/queue.sh" ]]; then
-        source "$KS_ROOT/lib/core.sh" 2>/dev/null || true
-        source "$KS_ROOT/tools/lib/queue.sh" 2>/dev/null || true
-        
-        if command -v ks_queue_list_pending >/dev/null 2>&1; then
-            local pending=$(ks_queue_list_pending 2>/dev/null || echo "[]")
-            if [[ "$pending" != "[]" ]]; then
-                local count=$(echo "$pending" | jq -r 'length' 2>/dev/null || echo "0")
-                if [[ "$count" -gt 0 ]]; then
-                    echo "📋 $count analysis/analyses ready for review"
-                    echo
-                fi
-            fi
-        fi
-    fi
+    [[ ! -f "$KS_ROOT/lib/core.sh" || ! -f "$KS_ROOT/tools/lib/queue.sh" ]] && return
+    
+    source "$KS_ROOT/lib/core.sh" 2>/dev/null || return
+    source "$KS_ROOT/tools/lib/queue.sh" 2>/dev/null || return
+    
+    command -v ks_queue_list_pending >/dev/null 2>&1 || return
+    
+    local pending=$(ks_queue_list_pending 2>/dev/null || echo "[]")
+    [[ "$pending" == "[]" ]] && return
+    
+    local count=$(echo "$pending" | jq -r 'length' 2>/dev/null || echo "0")
+    [[ "$count" -gt 0 ]] && echo "📋 $count analysis/analyses ready for review" && echo
 }
 
 # Handle --allhelp
 if [[ "${ALLHELP:-false}" == "true" ]]; then
-    discover_tools
     show_all_help
     exit 0
 fi
@@ -172,7 +171,6 @@ if [[ ${#REMAINING_ARGS[@]} -eq 0 ]]; then
     check_pending
     
     # Create Claude session with tools context
-    discover_tools
     echo "Initializing Claude with knowledge system tools context..."
     
     # Create .claude directory if it doesn't exist
@@ -200,16 +198,5 @@ if [[ ${#REMAINING_ARGS[@]} -eq 0 ]]; then
     exit 0
 fi
 
-# Discover tools and handle subcommand
-discover_tools
-
-subcommand="${REMAINING_ARGS[0]}"
-tool_args=("${REMAINING_ARGS[@]:1}")
-
-if [[ -n "${TOOL_MAP[$subcommand]:-}" ]]; then
-    exec "${TOOL_MAP[$subcommand]}" "${tool_args[@]}"
-else
-    echo "Unknown subcommand: $subcommand"
-    echo "Available: $(printf '%s ' "${!TOOL_MAP[@]}" | sort)"
-    exit 1
-fi
+# Handle remaining subcommands
+handle_subcommand "${REMAINING_ARGS[@]}"
