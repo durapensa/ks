@@ -54,25 +54,6 @@ auto-approve|a|Auto-approve above threshold|BOOL"
 # UTILS: Specialized tools (per-tool unique options)
 KS_CATEGORY_OPTIONS["UTILS"]=""  # Utilities define their own options
 
-# Generate option declarations from category
-# Usage: ks_category_options "ANALYZE"
-ks_category_options() {
-    local category="$1"
-    local options="${KS_CATEGORY_OPTIONS[$category]:-}"
-    
-    [[ -z "$options" ]] && return 0
-    
-    while IFS='|' read -r long short desc default; do
-        [[ -z "$long" ]] && continue
-        
-        # Handle boolean flags vs arguments
-        if [[ "$default" == "BOOL" ]]; then
-            echo "ks_option \"$long\" \"$short\" \"$desc\" \"\" \"\" \"flag\""
-        else
-            echo "ks_option \"$long\" \"$short\" \"$desc\" \"$default\""
-        fi
-    done <<< "$options"
-}
 
 # Note: Legacy ks_tool_category function has been removed.
 # All tools now use the category-based code generation system via tools/utils/generate-argparse

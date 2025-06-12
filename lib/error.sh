@@ -14,13 +14,6 @@ ks_error() {
     echo "Error: $1" >&2
 }
 
-ks_warn() {
-    echo "Warning: $1" >&2
-}
-
-ks_debug() {
-    [[ "${KS_DEBUG:-}" == "true" ]] && echo "Debug: $1" >&2
-}
 
 # Standardized error patterns with exit
 ks_exit_usage() {

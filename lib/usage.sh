@@ -110,13 +110,6 @@ ks_format_category_options() {
     esac
 }
 
-# Add custom options to a usage display
-# Usage: ks_add_custom_option "option-name" "description"
-ks_add_custom_option() {
-    local option="$1"
-    local description="$2"
-    printf "  %-${KS_OPTION_WIDTH}s %s\n" "$option" "$description"
-}
 
 # Helper function to format a custom option with consistent spacing
 # Usage: ks_format_option "option-name" "description"
@@ -126,15 +119,3 @@ ks_format_option() {
     printf "%-${KS_OPTION_WIDTH}s %s" "$option" "$description"
 }
 
-# Helper function for simple usage without arguments/examples
-# Usage: ks_simple_usage "description" "tool-name" "usage-pattern" "CATEGORY"
-ks_simple_usage() {
-    local description="$1"
-    local tool_name="$2"
-    local usage_pattern="$3"
-    local category="$4"
-    
-    declare -a empty_args=()
-    declare -a empty_examples=()
-    ks_generate_usage "$description" "$tool_name" "$usage_pattern" "$category" empty_args empty_examples
-}
