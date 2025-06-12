@@ -11,12 +11,7 @@ source "$KS_ROOT/lib/events.sh"
 source "$KS_ROOT/lib/argparse.sh"
 
 # Define usage
-ks_define_usage "Append events to knowledge stream
-
-Usage: events <type> <topic> [content]
-       echo 'content' | events <type> <topic>
-
-Event types: thought, connection, question, insight, process"
+ks_define_usage "Description: Append events to knowledge stream"
 
 # Initialize and define examples
 ks_init_options

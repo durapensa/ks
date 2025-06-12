@@ -19,13 +19,7 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Define usage
-ks_define_usage "Interactive tool to review findings from background analyses
-
-This tool will:
-1. Show each finding from completed analyses
-2. Allow you to approve (y) or reject (n) each finding
-3. Approved findings are integrated into your knowledge base
-4. Clear the analysis from the queue when complete"
+ks_define_usage "Description: Interactive tool to review findings from background analyses"
 
 # Initialize and define options
 ks_init_options

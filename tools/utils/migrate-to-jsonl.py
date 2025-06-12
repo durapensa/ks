@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Migrate corrupted multi-line JSON format to proper JSONL format.
+Description: Migrate corrupted multi-line JSON format to proper JSONL format
+
 Each line in JSONL should be a complete, valid JSON object.
 """
 

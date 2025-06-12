@@ -171,6 +171,12 @@ ks_usage() {
     local script_name="$1"
     local description="$2"
     
+    # Show description first if it exists
+    if [[ -n "$description" ]]; then
+        echo "$description"
+        echo ""
+    fi
+    
     echo "Usage: $script_name [options]"
     echo ""
     echo "Options:"
@@ -194,9 +200,6 @@ ks_usage() {
         
         printf "  %-20s %s%s\n" "${short_opt}--${name}${arg_text}" "${KS_OPTIONS_DESC[$name]}" "$default"
     done
-    
-    echo ""
-    echo "$description"
 }
 
 # Process all options using definitions

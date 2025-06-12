@@ -14,7 +14,7 @@ source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/claude.sh"
 
 # Define command description
-ks_define_usage "Identify recurring patterns in thought events using AI analysis"
+ks_define_usage "Description: Identify recurring patterns in thought events using AI analysis"
 
 # Check for background analysis results
 ks_check_background_results || true

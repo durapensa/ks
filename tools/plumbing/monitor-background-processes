@@ -11,14 +11,7 @@ source "$KS_ROOT/tools/lib/queue.sh"
 source "$KS_ROOT/tools/lib/process.sh"
 
 # Define command description
-ks_define_usage "Monitor and manage background analysis processes.
-
-Examples:
-  ${0##*/}                    # Show all process status
-  ${0##*/} --active           # Show running processes
-  ${0##*/} --cleanup          # Clean stale entries
-  ${0##*/} --archive-old 30   # Archive entries older than 30 days
-  ${0##*/} --kill-stale       # Kill hanging processes"
+ks_define_usage "Description: Monitor and manage background analysis processes"
 
 # Check for background analysis results
 ks_check_background_results || true

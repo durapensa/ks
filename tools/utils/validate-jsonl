@@ -9,9 +9,7 @@ source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/argparse.sh"
 
 # Define usage
-ks_define_usage "Validate JSONL file format
-
-Usage: validate-jsonl <file>"
+ks_define_usage "Description: Validate JSONL file format"
 
 # Initialize and define examples
 ks_init_options

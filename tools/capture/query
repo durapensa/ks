@@ -12,14 +12,7 @@ source "$KS_ROOT/lib/time.sh"
 source "$KS_ROOT/lib/argparse.sh"
 
 # Define command description
-ks_define_usage "Search and filter knowledge events
-
-Usage: query [options] [search_term]
-
-Examples:
-  query memory                  # Search for 'memory' in all events
-  query --days 7 \"learning\"     # Search last 7 days for 'learning'
-  query --type thought --count  # Count all thought events"
+ks_define_usage "Description: Search and filter knowledge events"
 
 # Initialize and define options
 ks_init_options

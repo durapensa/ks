@@ -10,15 +10,7 @@ source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 
 # Define command description
-ks_define_usage "Rotate knowledge event logs from hot to archive.
-
-Rotation creates archive/YYYY-MM-DD-HHMMSS.jsonl files when:
-- File size exceeds limit
-- Oldest event exceeds age limit
-- Event count exceeds limit
-
-Example:
-  ${0##*/} --max-size 10485760   # Rotate when file exceeds 10MB"
+ks_define_usage "Description: Rotate knowledge event logs from hot to archive"
 
 # Check for background analysis results
 ks_check_background_results || true

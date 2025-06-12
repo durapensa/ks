@@ -13,9 +13,7 @@ source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 
 # Define usage
-ks_define_usage "Check event count triggers and spawn background analyses
-
-Usually called automatically after event capture"
+ks_define_usage "Description: Check event count triggers and spawn background analyses"
 
 # Initialize and define options
 ks_init_options

@@ -10,18 +10,7 @@ source "$KS_ROOT/lib/argparse.sh"
 source "$KS_ROOT/tools/lib/queue.sh"
 
 # Define command description
-ks_define_usage "Analyze content for redundancy against existing knowledge to prevent
-knowledge graph pollution with similar or duplicate insights.
-
-Exit codes:
-  0 - Content is unique, safe to add
-  1 - Content is redundant, should not be added
-  2 - Error in analysis
-
-Examples:
-  ${0##*/} --content \"Memory systems analysis\" --type themes
-  ${0##*/} --threshold 0.8 --content \"Temporal knowledge patterns\"
-  echo \"New insight\" | ${0##*/} --type insights"
+ks_define_usage "Description: Analyze content for redundancy against existing knowledge to prevent knowledge graph pollution"
 
 # Check for background analysis results
 ks_check_background_results || true
