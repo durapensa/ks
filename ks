@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ks-new - Knowledge system CLI wrapper
+# ks - Knowledge system CLI wrapper
 
 set -euo pipefail
 
@@ -10,11 +10,7 @@ source "$KS_ROOT/lib/argparse.sh"
 # Define usage
 ks_define_usage "Knowledge system CLI wrapper with dynamic subcommands"
 
-# Initialize and define options
-ks_init_options
-ks_option "allhelp" "" "Show help for all available tools" "" "" "flag"
-
-# Tool discovery
+# Tool discovery (must be defined before usage function)
 declare -A TOOL_MAP
 discover_tools() {
     while IFS= read -r tool; do
@@ -26,7 +22,7 @@ discover_tools() {
         else
             TOOL_MAP["${dir_name#./}-${basename}"]="$KS_ROOT/tools/${tool#./}"
         fi
-    done < <(cd "$KS_ROOT/tools" && find . -type f -executable ! -name "*.*")
+    done < <(cd "$KS_ROOT/tools" && $KS_FIND . -type f -executable ! -name "*.*")
 }
 
 # Custom usage function that shows available subcommands
@@ -37,8 +33,10 @@ usage() {
     echo ""
     echo "Available subcommands:"
     
-    # Discover tools to show available subcommands
-    discover_tools
+    # Use existing TOOL_MAP if already populated
+    if [[ ${#TOOL_MAP[@]} -eq 0 ]]; then
+        discover_tools
+    fi
     
     # Group by category for better display
     local -A categories
@@ -68,8 +66,8 @@ usage() {
     echo "  ${0##*/} analyze-extract-themes --format json"
 }
 
-# Handle subcommands before processing ks-new options
-# This prevents subcommand --help from being intercepted by ks-new
+# Handle subcommands before processing ks options
+# This prevents subcommand --help from being intercepted by ks
 if [[ $# -gt 0 && "$1" != --* ]]; then
     # This is a subcommand, handle it directly
     discover_tools
@@ -86,24 +84,40 @@ if [[ $# -gt 0 && "$1" != --* ]]; then
     fi
 fi
 
-# Process ks-new options (only if no subcommand was provided)
+# Initialize and define options
+ks_init_options
+ks_option "allhelp" "" "Show help for all available tools" "" "" "flag"
+
+# Process options (only if no subcommand was provided)
 ks_process_options "$@"
 
-# Show all help
+# Helper function for parallel processing
+process_tool_help() {
+    local subcommand="$1"
+    local tool_path="${TOOL_MAP[$subcommand]#$KS_ROOT/}"
+    local tool_file="${TOOL_MAP[$subcommand]}"
+    
+    echo "$tool_path --help"
+    "$tool_file" --help 2>/dev/null || echo "No help available"
+    echo
+    echo "$tool_path --examples"
+    "$tool_file" --examples 2>/dev/null || echo "No examples available"
+    echo
+}
+
+# Export function and TOOL_MAP for parallel
+export -f process_tool_help
+export TOOL_MAP
+export KS_ROOT
+
+# Show all help using GNU parallel for speed with order preservation
 show_all_help() {
-    echo "ks-new --help"
+    echo "ks --help"
     usage
     echo
     
-    for subcommand in $(printf '%s\n' "${!TOOL_MAP[@]}" | sort); do
-        local tool_path="${TOOL_MAP[$subcommand]#$KS_ROOT/}"
-        echo "$tool_path --help"
-        "${TOOL_MAP[$subcommand]}" --help 2>/dev/null || echo "No help available"
-        echo
-        echo "$tool_path --examples"
-        "${TOOL_MAP[$subcommand]}" --examples 2>/dev/null || echo "No examples available"
-        echo
-    done
+    # Use GNU parallel with --keep-order to preserve tool ordering
+    printf '%s\n' "${!TOOL_MAP[@]}" | sort | parallel --keep-order process_tool_help
 }
 
 # Check pending analyses
@@ -165,6 +179,16 @@ if [[ ${#REMAINING_ARGS[@]} -eq 0 ]]; then
     exit 0
 fi
 
-# If we reach here, there was no subcommand and no special flags
-echo "No subcommand provided. Use --help to see available commands."
-exit 1
+# Discover tools and handle subcommand
+discover_tools
+
+subcommand="${REMAINING_ARGS[0]}"
+tool_args=("${REMAINING_ARGS[@]:1}")
+
+if [[ -n "${TOOL_MAP[$subcommand]:-}" ]]; then
+    exec "${TOOL_MAP[$subcommand]}" "${tool_args[@]}"
+else
+    echo "Unknown subcommand: $subcommand"
+    echo "Available: $(printf '%s ' "${!TOOL_MAP[@]}" | sort)"
+    exit 1
+fi

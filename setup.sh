@@ -72,9 +72,8 @@ check_dependencies() {
     command -v gnu-getopt >/dev/null 2>&1 || command -v getopt >/dev/null 2>&1 || missing_deps+=("gnu-getopt")
     command -v sd >/dev/null 2>&1 || missing_deps+=("sd")
     command -v rg >/dev/null 2>&1 || missing_deps+=("ripgrep")
-    command -v pueue >/dev/null 2>&1 || missing_deps+=("pueue")
+    command -v parallel >/dev/null 2>&1 || missing_deps+=("parallel")
     command -v watchexec >/dev/null 2>&1 || missing_deps+=("watchexec")
-    command -v sponge >/dev/null 2>&1 || missing_deps+=("moreutils")
     
     # GNU tools for macOS compatibility
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -167,7 +166,7 @@ check_dependencies() {
             echo "  sudo apt-get install jq python3 flock coreutils moreutils ripgrep"
             echo "  # For newer tools not in apt, use alternative methods:"
             echo "  # sd: cargo install sd"
-            echo "  # pueue: cargo install pueue"
+            echo "  # parallel: sudo apt-get install parallel"
             echo "  # watchexec: cargo install watchexec-cli"
             echo "  # gum: see https://github.com/charmbracelet/gum#installation"
             echo ""
