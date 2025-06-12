@@ -15,6 +15,9 @@ declare -A TOOL_MAP
 declare -A TOOL_CATEGORIES
 
 discover_tools() {
+    # Skip if already discovered
+    [[ -v TOOL_MAP && ${#TOOL_MAP[@]} -gt 0 ]] && return
+    
     local find_cmd="${KS_FIND:-gfind}"
     
     while IFS= read -r tool; do
