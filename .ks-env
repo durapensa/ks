@@ -20,9 +20,6 @@ export KS_ANALYSIS_QUEUE="$KS_BACKGROUND_DIR/analysis_queue.json"
 # Claude model for analysis tools
 export KS_MODEL="${KS_MODEL:-sonnet}"
 
-# Silence GNU parallel citation nag
-export PARALLEL_CITATION_SILENCE=1
-
 # Platform-specific command mappings
 # Use GNU tools explicitly to avoid PATH manipulation and ensure consistent behavior
 if [[ "$OSTYPE" == "darwin"* ]]; then

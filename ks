@@ -55,8 +55,9 @@ usage() {
         TOOL_DESCRIPTIONS["$tool_name"]="$description"
     done < <(parallel_process_tools extract_description)
     
+    echo "Description: Knowledge system CLI for interactive capture and analysis."
+    echo ""
     echo "Usage: ${0##*/} [OPTION]... [SUBCOMMAND] [ARGS]..."
-    echo "Knowledge system CLI for interactive capture and analysis."
     echo ""
     echo "Available subcommands:"
     
