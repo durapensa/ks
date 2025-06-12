@@ -57,15 +57,17 @@ fi
 
 TYPE="${ARGS[0]}"
 TOPIC="${ARGS[1]}"
-CONTENT=""
+CONTENT="${ARGS[2]:-}"
 
 # Validate event type
 ks_validate_event_type "$TYPE" || exit $EXIT_VALIDATION
 
 # Get content from argument or stdin
-if [[ ${#ARGS[@]} -ge 3 ]]; then
-    CONTENT="${ARGS[2]}"
-else
+if [[ -n "${CONTENT:-}" ]]; then
+    # Content was provided as third positional argument
+    true
+elif [[ ! -t 0 ]]; then
+    # Read from stdin if not a terminal
     CONTENT=$(cat)
 fi
 

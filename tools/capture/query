@@ -31,47 +31,12 @@ usage() {
         examples
 }
 
-# Build getopt options
-LONG_OPTS="help"
-LONG_OPTS="${LONG_OPTS},days:"
-LONG_OPTS="${LONG_OPTS},since:"
-LONG_OPTS="${LONG_OPTS},type:"
-LONG_OPTS="${LONG_OPTS},topic:"
-LONG_OPTS="${LONG_OPTS},limit:"
-LONG_OPTS="${LONG_OPTS},reverse"
-LONG_OPTS="${LONG_OPTS},count"
-
-# Parse options with getopt (dummy -o h required for long options)
-OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
-eval set -- "$OPTS"
-
-# Process options
-while true; do
-    case "$1" in
-        --help) usage; exit 0 ;;
-        --days) DAYS="$2"; shift 2 ;;
-        --since) SINCE="$2"; shift 2 ;;
-        --type) TYPE="$2"; shift 2 ;;
-        --topic) TOPIC="$2"; shift 2 ;;
-        --limit) LIMIT="$2"; shift 2 ;;
-        --reverse) REVERSE=true; shift ;;
-        --count) COUNT=true; shift ;;
-        --) shift; break ;;
-        *) ks_exit_error "Internal argument parsing error" ;;
-    esac
-done
-
-# Apply defaults and initialize variables
-DAYS="${DAYS:-}"
-SINCE="${SINCE:-}"
-TYPE="${TYPE:-}"
-TOPIC="${TOPIC:-}"
-LIMIT="${LIMIT:-20}"
-REVERSE="${REVERSE:-}"
-COUNT="${COUNT:-}"
+# Parse arguments using the new library
+source "$KS_ROOT/lib/argparse.sh"
+ks_parse_category_args "CAPTURE_SEARCH" -- "$@"
 
 # Get the search term from remaining arguments
-SEARCH_TERM="${1:-}"
+SEARCH_TERM="${REMAINING_ARGS[0]:-}"
 
 # Get filter date
 FILTER_DATE=$(ks_get_filter_date "$DAYS" "$SINCE")

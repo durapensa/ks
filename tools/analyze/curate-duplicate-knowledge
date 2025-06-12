@@ -57,17 +57,10 @@ validate_threshold() {
     fi
 }
 
-# Build getopt options (ANALYZE subset + custom)
-LONG_OPTS="help"
-LONG_OPTS="${LONG_OPTS},content:"
-LONG_OPTS="${LONG_OPTS},type:"
-LONG_OPTS="${LONG_OPTS},threshold:"
-LONG_OPTS="${LONG_OPTS},window:"
-LONG_OPTS="${LONG_OPTS},sources:"
-LONG_OPTS="${LONG_OPTS},verbose"
-
-# Parse options with getopt (dummy -o h required for long options)
-OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
+# Parse custom arguments
+source "$KS_ROOT/lib/argparse.sh"
+CUSTOM_LONG_OPTS="content:,type:,threshold:,window:,sources:,verbose"
+OPTS=$(ks_parse_custom_args "UTILS" "$CUSTOM_LONG_OPTS" -- "$@")
 eval set -- "$OPTS"
 
 # Process options
@@ -92,6 +85,9 @@ THRESHOLD="${THRESHOLD:-$SIMILARITY_THRESHOLD}"
 WINDOW="${WINDOW:-$CURATION_WINDOW}"
 SOURCES="${SOURCES:-}"
 VERBOSE="${VERBOSE:-}"
+
+# Set remaining args
+REMAINING_ARGS=("$@")
 
 # Validate threshold
 validate_threshold "$THRESHOLD"
