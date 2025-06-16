@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/durapensa/ks/pkg/config"
@@ -105,7 +104,6 @@ type model struct {
 	searchInput   string
 	loading       bool
 	inputMode     bool
-	watcher       *fsnotify.Watcher
 }
 
 // Messages
@@ -122,15 +120,7 @@ type searchResultsMsg struct {
 	term    string
 }
 
-type fileChangeMsg struct{}
-
-type watcherErrorMsg struct {
-	err error
-}
-
-type watcherCreatedMsg struct {
-	watcher *fsnotify.Watcher
-}
+// File watcher messages removed - using polling instead
 
 // Initialize the model
 func initialModel() model {
@@ -149,62 +139,14 @@ func initialModel() model {
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		loadDashboardDataWithConfig(m.config),
-		initFileWatcher(m.config),
-		tea.Every(time.Second*5, func(time.Time) tea.Msg {
+		// Fast polling for responsive updates
+		tea.Every(time.Second*2, func(time.Time) tea.Msg {
 			return loadDashboardDataWithConfig(m.config)()
 		}),
 	)
 }
 
-// Initialize file watcher for live updates
-func initFileWatcher(cfg *config.Config) tea.Cmd {
-	return func() tea.Msg {
-		watcher, err := fsnotify.NewWatcher()
-		if err != nil {
-			// Log error but don't crash - continue without file watching
-			log.Printf("Failed to create file watcher: %v", err)
-			return nil
-		}
-
-		// Watch the hot log file if it exists
-		if cfg.HotLog != "" {
-			err = watcher.Add(cfg.HotLog)
-			if err != nil {
-				// File might not exist yet, that's okay - close watcher and continue
-				watcher.Close()
-				log.Printf("Failed to watch file %s: %v", cfg.HotLog, err)
-				return nil
-			}
-		}
-
-		// Return the watcher to be stored in the model
-		return watcherCreatedMsg{watcher: watcher}
-	}
-}
-
-// Watch for file changes - continuous monitoring
-func watchForChanges(watcher *fsnotify.Watcher) tea.Cmd {
-	return tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-		select {
-		case event, ok := <-watcher.Events:
-			if !ok {
-				return nil
-			}
-			if event.Op&fsnotify.Write == fsnotify.Write {
-				// File was written to, trigger update
-				return fileChangeMsg{}
-			}
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				return nil
-			}
-			return watcherErrorMsg{err}
-		default:
-			// No events ready, continue watching
-		}
-		return nil
-	})
-}
+// File watcher removed - using fast polling instead for simplicity and reliability
 
 // Parse the latest event from the hot log
 func parseLatestEvent(cfg *config.Config) *Event {
@@ -330,7 +272,7 @@ func runExternalTool(tool string, args ...string) tea.Cmd {
 		if err != nil {
 			return errorMsg{fmt.Errorf("running %s: %w", tool, err)}
 		}
-		return fileChangeMsg{} // Trigger refresh
+		return nil // Tool executed successfully
 	})
 }
 
@@ -349,7 +291,7 @@ func runExternalToolWithConfig(cfg *config.Config, command string) tea.Cmd {
 		if err != nil {
 			return errorMsg{fmt.Errorf("running %s: %w", command, err)}
 		}
-		return fileChangeMsg{} // Trigger refresh
+		return nil // Tool executed successfully
 	})
 }
 
@@ -378,10 +320,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
-			// Clean up file watcher before quitting
-			if m.watcher != nil {
-				m.watcher.Close()
-			}
 			return m, tea.Quit
 
 		// Screen navigation
@@ -471,17 +409,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.error = msg.err
 		m.loading = false
 
-	case watcherCreatedMsg:
-		m.watcher = msg.watcher
-		return m, watchForChanges(m.watcher)
-
-	case fileChangeMsg:
-		// File changed, reload data - watcher continues automatically
-		return m, loadDashboardDataWithConfig(m.config)
-
-	case watcherErrorMsg:
-		// Log watcher error but continue
-		log.Printf("File watcher error: %v", msg.err)
+	// File watcher cases removed - using polling instead
 	}
 
 	return m, nil

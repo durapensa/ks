@@ -36,7 +36,7 @@ ks_count_new_events() {
             ' "$KS_HOT_LOG")
         else
             # Count all events
-            count=$(wc -l < "$KS_HOT_LOG")
+            count=$(wc -l < "$KS_HOT_LOG" | tr -d ' ')
         fi
     fi
     

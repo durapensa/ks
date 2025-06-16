@@ -282,7 +282,7 @@ check_knowledge_capture() {
     
     # Check if any events were captured during the Claude session
     if [[ -f "$conversant_dir/events/hot.jsonl" ]]; then
-        events_count=$(wc -l < "$conversant_dir/events/hot.jsonl" 2>/dev/null || echo "0")
+        events_count=$(wc -l < "$conversant_dir/events/hot.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
         if [[ $events_count -gt 0 ]]; then
             log_info "Knowledge capture: $events_count events recorded during session"
             record_conversant_event "knowledge_captured" "events_count: $events_count"
