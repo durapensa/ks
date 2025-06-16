@@ -168,15 +168,11 @@ prepare_turn_context() {
         last_response=$(get_last_response "$last_speaker")
         
         if [[ -n "$last_response" ]]; then
-            # Include actual previous response in context
-            context="Continuing conversation. $last_speaker just said:
-
-$last_response
-
-Please respond as $current_speaker."
+            # Include actual previous response with minimal framing
+            context="$last_speaker: $last_response"
         else
-            # Fallback to simple context
-            context="Continuing conversation. Previous speaker was $last_speaker. Please respond as $current_speaker."
+            # Fallback - just indicate it's a continuation
+            context="(Continuing conversation)"
         fi
     fi
     
