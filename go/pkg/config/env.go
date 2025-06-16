@@ -15,6 +15,9 @@ type Config struct {
 	EventsDir      string
 	HotLog         string
 	Model          string
+	IsConversation bool
+	ConversationDir string
+	ContextName    string
 }
 
 // LoadKSEnv reads the .ks-env file and returns configuration
@@ -25,16 +28,35 @@ func LoadKSEnv() (*Config, error) {
 		return nil, fmt.Errorf("finding project root: %w", err)
 	}
 
+	// Check if we're in a conversation directory
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("getting current directory: %w", err)
+	}
+
+	config := &Config{
+		KSRoot: root,
+	}
+
+	// Detect conversation context
+	localKnowledgeDir := filepath.Join(currentDir, "knowledge")
+	if stat, err := os.Stat(localKnowledgeDir); err == nil && stat.IsDir() {
+		// We're in a conversation directory
+		config.IsConversation = true
+		config.ConversationDir = currentDir
+		config.ContextName = filepath.Base(currentDir)
+		config.KnowledgeDir = localKnowledgeDir
+		config.EventsDir = filepath.Join(localKnowledgeDir, "events")
+		config.HotLog = filepath.Join(config.EventsDir, "hot.jsonl")
+	}
+
+	// Load environment file
 	envFile := filepath.Join(root, ".ks-env")
 	file, err := os.Open(envFile)
 	if err != nil {
 		return nil, fmt.Errorf("opening .ks-env: %w", err)
 	}
 	defer file.Close()
-
-	config := &Config{
-		KSRoot: root,
-	}
 
 	// Parse shell environment variables
 	scanner := bufio.NewScanner(file)
@@ -66,11 +88,17 @@ func LoadKSEnv() (*Config, error) {
 
 				switch key {
 				case "KS_KNOWLEDGE_DIR":
-					config.KnowledgeDir = value
+					if !config.IsConversation {
+						config.KnowledgeDir = value
+					}
 				case "KS_EVENTS_DIR":
-					config.EventsDir = value
+					if !config.IsConversation {
+						config.EventsDir = value
+					}
 				case "KS_HOT_LOG":
-					config.HotLog = value
+					if !config.IsConversation {
+						config.HotLog = value
+					}
 				case "KS_MODEL":
 					config.Model = value
 				}

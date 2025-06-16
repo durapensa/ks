@@ -11,6 +11,8 @@ chat/.claude/ks-instructions.md
 *.bak
 
 # Go development
+/ksd                # Go TUI binary (installed from go/cmd/ksd)
+/ksd-legacy         # Backup of original bash ksd
 /ksd-tui            # Future Go replacement for ksd
 *.exe               # Windows binaries
 go/bin/             # Go test binaries

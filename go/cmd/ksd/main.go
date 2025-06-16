@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/durapensa/ks/pkg/config"
@@ -62,6 +65,16 @@ var (
 		Foreground(lipgloss.Color("252"))
 )
 
+// Event structure for parsing JSONL
+type Event struct {
+	Timestamp string `json:"timestamp"`
+	Type      string `json:"type"`
+	Thought   string `json:"thought,omitempty"`
+	Observation string `json:"observation,omitempty"`
+	Question    string `json:"question,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
 // Dashboard data
 type dashboardData struct {
 	totalEvents       int
@@ -71,6 +84,7 @@ type dashboardData struct {
 	eventsUntilConn   int
 	eventsUntilPatt   int
 	lastUpdate        string
+	latestEvent       *Event
 }
 
 // Model represents the TUI state
@@ -86,6 +100,7 @@ type model struct {
 	searchInput   string
 	loading       bool
 	inputMode     bool
+	watcher       *fsnotify.Watcher
 }
 
 // Messages
@@ -100,6 +115,16 @@ type errorMsg struct {
 type searchResultsMsg struct {
 	results []string
 	term    string
+}
+
+type fileChangeMsg struct{}
+
+type watcherErrorMsg struct {
+	err error
+}
+
+type watcherCreatedMsg struct {
+	watcher *fsnotify.Watcher
 }
 
 // Initialize the model
@@ -118,30 +143,157 @@ func initialModel() model {
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
-		loadDashboardData,
+		loadDashboardDataWithConfig(m.config),
+		initFileWatcher(m.config),
 		tea.Every(time.Second*30, func(time.Time) tea.Msg {
-			return loadDashboardData()
+			return loadDashboardDataWithConfig(m.config)()
 		}),
 	)
 }
 
-// Load dashboard data from system
-func loadDashboardData() tea.Msg {
-	// Get event count
-	cmd := exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/lib/events.sh; ks_count_new_events")
-	output, err := cmd.Output()
-	if err != nil {
-		return errorMsg{fmt.Errorf("counting events: %w", err)}
-	}
-	
-	totalEvents, _ := strconv.Atoi(strings.TrimSpace(string(output)))
+// Initialize file watcher for live updates
+func initFileWatcher(cfg *config.Config) tea.Cmd {
+	return func() tea.Msg {
+		watcher, err := fsnotify.NewWatcher()
+		if err != nil {
+			return watcherErrorMsg{err}
+		}
 
-	// Get pending analyses count
-	cmd = exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/tools/lib/queue.sh; ks_queue_list_pending | jq 'length'")
-	output, err = cmd.Output()
-	if err == nil {
-		pendingCount, _ := strconv.Atoi(strings.TrimSpace(string(output)))
-		
+		// Watch the hot log file if it exists
+		if cfg.HotLog != "" {
+			err = watcher.Add(cfg.HotLog)
+			if err != nil {
+				// File might not exist yet, that's okay
+				return watcherErrorMsg{err}
+			}
+		}
+
+		// Return the watcher to be stored in the model
+		return watcherCreatedMsg{watcher: watcher}
+	}
+}
+
+// Watch for file changes
+func watchForChanges(watcher *fsnotify.Watcher) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return nil
+			}
+			if event.Op&fsnotify.Write == fsnotify.Write {
+				// File was written to, trigger update
+				return fileChangeMsg{}
+			}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return nil
+			}
+			return watcherErrorMsg{err}
+		}
+		return nil
+	}
+}
+
+// Parse the latest event from the hot log
+func parseLatestEvent(cfg *config.Config) *Event {
+	if cfg.HotLog == "" {
+		return nil
+	}
+
+	file, err := os.Open(cfg.HotLog)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	// Read file backwards to get the last line
+	stat, err := file.Stat()
+	if err != nil {
+		return nil
+	}
+
+	if stat.Size() == 0 {
+		return nil
+	}
+
+	// Read the last few bytes to find the last line
+	buf := make([]byte, min(1024, int(stat.Size())))
+	_, err = file.ReadAt(buf, max(0, stat.Size()-int64(len(buf))))
+	if err != nil {
+		return nil
+	}
+
+	// Find the last complete line
+	lines := strings.Split(string(buf), "\n")
+	var lastLine string
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			lastLine = strings.TrimSpace(lines[i])
+			break
+		}
+	}
+
+	if lastLine == "" {
+		return nil
+	}
+
+	// Parse the JSON
+	var event Event
+	if err := json.Unmarshal([]byte(lastLine), &event); err != nil {
+		return nil
+	}
+
+	return &event
+}
+
+// Helper functions for min/max
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// Load dashboard data from system with config
+func loadDashboardDataWithConfig(cfg *config.Config) tea.Cmd {
+	return func() tea.Msg {
+		// Get event count - use context-aware counting
+		var totalEvents int
+		if cfg.IsConversation {
+			// Count events in local hot log
+			if file, err := os.Open(cfg.HotLog); err == nil {
+				defer file.Close()
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					totalEvents++
+				}
+			}
+		} else {
+			// Use global event counting
+			cmd := exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/lib/events.sh; ks_count_new_events")
+			if output, err := cmd.Output(); err == nil {
+				totalEvents, _ = strconv.Atoi(strings.TrimSpace(string(output)))
+			}
+		}
+
+		// Get pending analyses count
+		var pendingCount int
+		cmd := exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/tools/lib/queue.sh; ks_queue_list_pending | jq 'length'")
+		if output, err := cmd.Output(); err == nil {
+			pendingCount, _ = strconv.Atoi(strings.TrimSpace(string(output)))
+		}
+
+		// Get latest event
+		latestEvent := parseLatestEvent(cfg)
+
 		return dashboardMsg{
 			data: dashboardData{
 				totalEvents:     totalEvents,
@@ -151,20 +303,9 @@ func loadDashboardData() tea.Msg {
 				eventsUntilConn:  20 - (totalEvents % 20),
 				eventsUntilPatt:  30 - (totalEvents % 30),
 				lastUpdate:      time.Now().Format("15:04:05"),
+				latestEvent:     latestEvent,
 			},
 		}
-	}
-
-	return dashboardMsg{
-		data: dashboardData{
-			totalEvents:     totalEvents,
-			pendingCount:    0,
-			activeProcesses: 0,
-			eventsUntilTheme: 10 - (totalEvents % 10),
-			eventsUntilConn:  20 - (totalEvents % 20),
-			eventsUntilPatt:  30 - (totalEvents % 30),
-			lastUpdate:      time.Now().Format("15:04:05"),
-		},
 	}
 }
 
@@ -175,14 +316,39 @@ func runExternalTool(tool string, args ...string) tea.Cmd {
 		if err != nil {
 			return errorMsg{fmt.Errorf("running %s: %w", tool, err)}
 		}
-		return loadDashboardData()
+		return fileChangeMsg{} // Trigger refresh
 	})
 }
 
-// Search knowledge base
-func searchKnowledge(term string) tea.Cmd {
+// Handle external tool execution with config context
+func runExternalToolWithConfig(cfg *config.Config, command string) tea.Cmd {
+	// Build environment-aware command
+	fullCommand := fmt.Sprintf("source ~/.ks-env 2>/dev/null || source .ks-env; %s", command)
+	
+	// If we're in a conversation directory, set working directory
+	cmd := exec.Command("bash", "-c", fullCommand)
+	if cfg.IsConversation {
+		cmd.Dir = cfg.ConversationDir
+	}
+	
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		if err != nil {
+			return errorMsg{fmt.Errorf("running %s: %w", command, err)}
+		}
+		return fileChangeMsg{} // Trigger refresh
+	})
+}
+
+// Search knowledge base with context awareness
+func searchKnowledgeWithConfig(cfg *config.Config, term string) tea.Cmd {
 	return func() tea.Msg {
 		cmd := exec.Command("bash", "-c", fmt.Sprintf("source ~/.ks-env 2>/dev/null || source .ks-env; $KS_ROOT/tools/capture/query '%s'", term))
+		
+		// If we're in a conversation directory, set working directory
+		if cfg.IsConversation {
+			cmd.Dir = cfg.ConversationDir
+		}
+		
 		output, err := cmd.Output()
 		if err != nil {
 			return errorMsg{fmt.Errorf("searching: %w", err)}
@@ -220,22 +386,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Dashboard actions
 		case "r":
 			if m.currentScreen == dashboardScreen && m.dashboard.pendingCount > 0 {
-				return m, runExternalTool("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; $KS_ROOT/tools/introspect/review-findings")
+				return m, runExternalToolWithConfig(m.config, "$KS_ROOT/tools/introspect/review-findings")
 			}
 		case "t":
 			if m.currentScreen == dashboardScreen {
-				return m, runExternalTool("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; $KS_ROOT/tools/plumbing/check-event-triggers --verbose")
+				return m, runExternalToolWithConfig(m.config, "$KS_ROOT/tools/plumbing/check-event-triggers --verbose")
 			}
 		case "x":
 			// Launch fx viewer for knowledge exploration
-			return m, runExternalTool("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; fx $KS_HOT_LOG")
+			hotLogPath := m.config.HotLog
+			if hotLogPath == "" {
+				hotLogPath = "$KS_HOT_LOG"
+			}
+			return m, runExternalToolWithConfig(m.config, fmt.Sprintf("fx %s", hotLogPath))
 		case "k":
 			// Quick kg query
 			if m.currentScreen == dashboardScreen {
-				return m, runExternalTool("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; $KS_ROOT/tools/kg/query --stats")
+				return m, runExternalToolWithConfig(m.config, "$KS_ROOT/tools/kg/query --stats")
 			}
 		case "f":
-			return m, loadDashboardData
+			return m, loadDashboardDataWithConfig(m.config)
 			
 		// Search actions
 		case "enter":
@@ -243,7 +413,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.inputMode {
 					m.inputMode = false
 					m.searchTerm = m.searchInput
-					return m, searchKnowledge(m.searchInput)
+					return m, searchKnowledgeWithConfig(m.config, m.searchInput)
 				} else {
 					m.inputMode = true
 					m.searchInput = ""
@@ -282,6 +452,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errorMsg:
 		m.error = msg.err
 		m.loading = false
+
+	case watcherCreatedMsg:
+		m.watcher = msg.watcher
+		return m, watchForChanges(m.watcher)
+
+	case fileChangeMsg:
+		// File changed, reload data and continue watching
+		return m, tea.Batch(
+			loadDashboardDataWithConfig(m.config),
+			watchForChanges(m.watcher),
+		)
+
+	case watcherErrorMsg:
+		// Log watcher error but continue
+		log.Printf("File watcher error: %v", msg.err)
 	}
 
 	return m, nil
@@ -292,10 +477,15 @@ func (m model) View() string {
 		return fmt.Sprintf("Error: %v\n\nPress q to quit.", m.error)
 	}
 
-	// Title
-	title := titleStyle.Width(80).Render("KNOWLEDGE SYSTEM DASHBOARD")
+	// Title with context
+	var title string
+	if m.config.IsConversation {
+		title = titleStyle.Width(80).Render(fmt.Sprintf("KNOWLEDGE SYSTEM - %s", strings.ToUpper(m.config.ContextName)))
+	} else {
+		title = titleStyle.Width(80).Render("KNOWLEDGE SYSTEM DASHBOARD")
+	}
 	
-	// Navigation breadcrumb
+	// Navigation breadcrumb with context info
 	var breadcrumb string
 	switch m.currentScreen {
 	case dashboardScreen:
@@ -310,7 +500,12 @@ func (m model) View() string {
 		breadcrumb = "Capture"
 	}
 	
-	nav := statusStyle.Render(fmt.Sprintf("Current: %s", breadcrumb))
+	contextInfo := ""
+	if m.config.IsConversation {
+		contextInfo = fmt.Sprintf(" | Context: %s", m.config.ContextName)
+	}
+	
+	nav := statusStyle.Render(fmt.Sprintf("Current: %s%s", breadcrumb, contextInfo))
 	separator := separatorStyle.Render(strings.Repeat("═", 80))
 
 	// Screen content
@@ -376,6 +571,42 @@ func (m model) renderDashboard() string {
 	triggers += fmt.Sprintf("  Theme: %s | Connections: %s | Patterns: %s",
 		themeStatus, connStatus, pattStatus)
 
+	// Latest event section
+	latestEventSection := ""
+	if d.latestEvent != nil {
+		latestEventSection = separatorStyle.Render(strings.Repeat("─", 80)) + "\n"
+		latestEventSection += "LATEST EVENT:\n"
+		
+		// Format timestamp
+		timestamp := d.latestEvent.Timestamp
+		if len(timestamp) > 16 {
+			timestamp = timestamp[:16] // Truncate to just date and time
+		}
+		
+		// Get event content
+		var content string
+		switch d.latestEvent.Type {
+		case "thought":
+			content = d.latestEvent.Thought
+		case "observation":
+			content = d.latestEvent.Observation
+		case "question":
+			content = d.latestEvent.Question
+		default:
+			content = "No content"
+		}
+		
+		// Truncate content if too long
+		if len(content) > 60 {
+			content = content[:57] + "..."
+		}
+		
+		latestEventSection += fmt.Sprintf("  %s | %s | %s",
+			timestamp,
+			readyStyle.Render(d.latestEvent.Type),
+			content)
+	}
+
 	// Pending reviews
 	pending := ""
 	if d.pendingCount > 0 {
@@ -384,7 +615,7 @@ func (m model) renderDashboard() string {
 		pending += fmt.Sprintf("  %d analysis/analyses ready for review", d.pendingCount)
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s", status, separatorStyle.Render(strings.Repeat("─", 80)), triggers, pending)
+	return fmt.Sprintf("%s\n%s\n%s\n%s\n%s", status, separatorStyle.Render(strings.Repeat("─", 80)), triggers, latestEventSection, pending)
 }
 
 func (m model) renderSearch() string {
