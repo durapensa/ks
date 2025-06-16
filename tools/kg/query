@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+
+# query - Query the knowledge graph database
+
+set -euo pipefail
+
+# Source configuration and modular libraries
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/validation.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
+
+# Knowledge graph database location - context-aware
+if [[ -d "./knowledge" ]]; then
+    KG_DB="./knowledge/kg.db"
+else
+    KG_DB="$KS_ROOT/knowledge/kg.db"
+fi
+
+# Standardized usage function
+usage() {
+    declare -a arguments=(
+        "stats|s|Show database statistics|BOOL"
+        "concepts|c|List all concepts|BOOL"
+        "edges|e|List all relationships|BOOL"
+        "sql|q|Execute raw SQL query|STRING"
+    )
+    declare -a examples=(
+        "query --stats                    # Show database statistics"
+        "query --concepts                 # List all concepts"
+        "query --sql \"SELECT * FROM concepts ORDER BY weight DESC LIMIT 5\""
+    )
+    ks_generate_usage \
+        "Query the knowledge graph database" \
+        "query" \
+        "[options]" \
+        "UTILS" \
+        arguments \
+        examples
+}
+
+# Parse custom arguments first
+STATS="false"
+CONCEPTS="false"
+EDGES="false"
+SQL_QUERY=""
+FILTERED_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+        --stats|-s)
+            STATS="true"
+            shift
+            ;;
+        --concepts|-c)
+            CONCEPTS="true"
+            shift
+            ;;
+        --edges|-e)
+            EDGES="true"
+            shift
+            ;;
+        --sql|-q)
+            SQL_QUERY="${2:-}"
+            shift 2
+            ;;
+        *)
+            FILTERED_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Parse remaining arguments
+set -- "${FILTERED_ARGS[@]}"
+ks_parse_category_args "UTILS" -- "$@"
+
+# Check if database exists
+if [[ ! -f "$KG_DB" ]]; then
+    ks_exit_error "Knowledge graph database not found at: $KG_DB"
+fi
+
+# Execute queries based on options
+if [[ "$STATS" == "true" ]]; then
+    echo "Knowledge Graph Statistics"
+    echo "========================="
+    echo "Database: $KG_DB"
+    echo
+    
+    sqlite3 "$KG_DB" -column -header "
+        SELECT 
+            'Concepts' as table_name,
+            COUNT(*) as count
+        FROM concepts
+        UNION ALL
+        SELECT 
+            'Edges' as table_name,
+            COUNT(*) as count
+        FROM edges
+        UNION ALL
+        SELECT 
+            'Aliases' as table_name,
+            COUNT(*) as count
+        FROM aliases
+        UNION ALL
+        SELECT 
+            'Distillation Runs' as table_name,
+            COUNT(*) as count
+        FROM distillation_runs
+    "
+    
+    echo
+    echo "Recent Distillation Runs:"
+    sqlite3 "$KG_DB" -column -header "
+        SELECT id, started_at, status, concepts_extracted, edges_created
+        FROM distillation_runs 
+        ORDER BY started_at DESC 
+        LIMIT 5
+    "
+fi
+
+if [[ "$CONCEPTS" == "true" ]]; then
+    echo "Knowledge Graph Concepts"
+    echo "======================="
+    sqlite3 "$KG_DB" -column -header "
+        SELECT 
+            name,
+            printf('%.2f', weight) as weight,
+            printf('%.2f', human_weight) as human_pct,
+            printf('%.2f', ai_weight) as ai_pct,
+            created
+        FROM concepts 
+        ORDER BY weight DESC 
+        LIMIT 20
+    "
+    
+    echo
+    echo "Concept Aliases:"
+    sqlite3 "$KG_DB" -column -header "
+        SELECT 
+            c.name as concept,
+            GROUP_CONCAT(a.alias, ', ') as aliases
+        FROM concepts c
+        JOIN aliases a ON c.id = a.canonical_id
+        GROUP BY c.id, c.name
+        ORDER BY c.weight DESC
+        LIMIT 10
+    "
+fi
+
+if [[ "$EDGES" == "true" ]]; then
+    echo "Knowledge Graph Relationships"
+    echo "============================"
+    sqlite3 "$KG_DB" -column -header "
+        SELECT 
+            s.name as source,
+            e.edge_type,
+            t.name as target,
+            printf('%.2f', e.strength) as strength,
+            e.created
+        FROM edges e
+        JOIN concepts s ON e.source_id = s.id
+        JOIN concepts t ON e.target_id = t.id
+        ORDER BY e.strength DESC
+        LIMIT 20
+    "
+fi
+
+if [[ -n "$SQL_QUERY" ]]; then
+    echo "Custom SQL Query Results"
+    echo "======================="
+    sqlite3 "$KG_DB" -column -header "$SQL_QUERY"
+fi
+
+# If no specific query, show basic stats
+if [[ "$STATS" == "false" && "$CONCEPTS" == "false" && "$EDGES" == "false" && -z "$SQL_QUERY" ]]; then
+    echo "Knowledge Graph Overview"
+    echo "======================"
+    echo "Database: $KG_DB"
+    
+    CONCEPT_COUNT=$(sqlite3 "$KG_DB" "SELECT COUNT(*) FROM concepts")
+    EDGE_COUNT=$(sqlite3 "$KG_DB" "SELECT COUNT(*) FROM edges")
+    
+    echo "Concepts: $CONCEPT_COUNT"
+    echo "Relationships: $EDGE_COUNT"
+    
+    if [[ "$CONCEPT_COUNT" -gt 0 ]]; then
+        echo
+        echo "Top 5 Concepts by Weight:"
+        sqlite3 "$KG_DB" -column "
+            SELECT name, printf('%.2f', weight) as weight
+            FROM concepts 
+            ORDER BY weight DESC 
+            LIMIT 5
+        "
+    fi
+fi

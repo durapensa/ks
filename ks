@@ -59,7 +59,7 @@ show_usage() {
     fi
     
     # Display by hardcoded categories (for now)  
-    for category in capture analyze introspect plumbing utils; do
+    for category in capture analyze kg introspect plumbing utils; do
         local has_tools=false
         for subcommand in $(printf '%s\n' "${!TOOL_MAP[@]}" | sort); do
             if [[ "${TOOL_CATEGORIES[$subcommand]}" == "$category" ]]; then
@@ -100,6 +100,16 @@ show_claude_help() {
     echo "=== Key Capture Tools ==="
     echo ""
     for tool in events query; do
+        if [[ -n "${TOOL_MAP[$tool]:-}" ]]; then
+            echo "--- $tool ---"
+            "${TOOL_MAP[$tool]}" --help
+            echo ""
+        fi
+    done
+    
+    echo "=== Key Analysis Tools ==="
+    echo ""
+    for tool in extract-themes find-connections extract-concepts; do
         if [[ -n "${TOOL_MAP[$tool]:-}" ]]; then
             echo "--- $tool ---"
             "${TOOL_MAP[$tool]}" --help

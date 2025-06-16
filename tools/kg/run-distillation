@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+
+# run-distillation - Orchestrate knowledge graph distillation pipeline
+
+set -euo pipefail
+
+# Source configuration and modular libraries
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/validation.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
+
+# Knowledge graph database location - context-aware
+# Use local knowledge directory if it exists, otherwise fall back to KS_ROOT
+if [[ -d "./knowledge" ]]; then
+    KG_DB="./knowledge/kg.db"
+else
+    KG_DB="$KS_ROOT/knowledge/kg.db"
+fi
+KG_SCHEMA="$KS_ROOT/tools/kg/schema.sql"
+
+# Standardized usage function
+usage() {
+    declare -a arguments=(
+        "init|i|Initialize knowledge graph database|BOOL"
+    )
+    declare -a examples=(
+        "run-distillation --init"
+        "run-distillation --days 7 --verbose"
+    )
+    ks_generate_usage \
+        "Orchestrate knowledge graph distillation from event streams" \
+        "run-distillation" \
+        "[options]" \
+        "ANALYZE" \
+        arguments \
+        examples
+}
+
+# Parse custom init option first
+INIT_DB="false"
+FILTERED_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+        --init|-i)
+            INIT_DB="true"
+            shift
+            ;;
+        *)
+            FILTERED_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Parse remaining arguments using the new library
+set -- "${FILTERED_ARGS[@]}"
+ks_parse_category_args "ANALYZE" -- "$@"
+
+# Validate options
+ks_validate_analyze_options "$DAYS" "$SINCE" "$TYPE" "$FORMAT" "$VERBOSE"
+
+# Initialize database if requested
+if [[ "${INIT_DB:-false}" == "true" ]]; then
+    [[ "$VERBOSE" == "true" ]] && echo "Initializing knowledge graph database..."
+    
+    # Create knowledge directory if it doesn't exist
+    mkdir -p "$(dirname "$KG_DB")"
+    
+    # Initialize SQLite database with schema
+    if [[ -f "$KG_DB" ]]; then
+        echo "Warning: Database already exists at $KG_DB"
+        read -p "Reinitialize? This will delete all existing data (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Initialization cancelled"
+            exit 0
+        fi
+        rm -f "$KG_DB"
+    fi
+    
+    # Create database with schema
+    sqlite3 "$KG_DB" < "$KG_SCHEMA"
+    
+    echo "Knowledge graph database initialized at $KG_DB"
+    [[ "$VERBOSE" == "true" ]] && echo "Schema loaded from $KG_SCHEMA"
+    
+    # If only initializing, exit here
+    if [[ $# -eq 0 ]]; then
+        exit 0
+    fi
+fi
+
+# Check if database exists
+if [[ ! -f "$KG_DB" ]]; then
+    ks_exit_error "Knowledge graph database not found. Run with --init to create it."
+fi
+
+# Start distillation run tracking
+RUN_ID=$(date +%s)
+START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+[[ "$VERBOSE" == "true" ]] && echo "Starting distillation run $RUN_ID..."
+
+# Record start of distillation run
+sqlite3 "$KG_DB" "INSERT INTO distillation_runs (id, started_at, status) VALUES ($RUN_ID, '$START_TIME', 'running')"
+
+# Phase 1: Extract concepts
+[[ "$VERBOSE" == "true" ]] && echo "Phase 1: Extracting concepts..."
+
+CONCEPTS_JSON=$("$KS_ROOT/tools/kg/extract-concepts" --days "$DAYS" --format json)
+
+[[ "$VERBOSE" == "true" ]] && echo "Concepts JSON received, length: ${#CONCEPTS_JSON}"
+
+if [[ -z "$CONCEPTS_JSON" ]] || [[ "$CONCEPTS_JSON" == "null" ]]; then
+    sqlite3 "$KG_DB" "UPDATE distillation_runs SET status='failed', completed_at='$(date -u +"%Y-%m-%dT%H:%M:%SZ")' WHERE id=$RUN_ID"
+    ks_exit_error "No concepts extracted from events"
+fi
+
+[[ "$VERBOSE" == "true" ]] && echo "Processing concepts into database..."
+
+# Process concepts into database
+CONCEPTS_COUNT=0
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Use process substitution to avoid subshell issues
+while IFS= read -r concept_json; do
+    # Extract concept details
+    NAME=$(echo "$concept_json" | jq -r '.name')
+    SOURCE_TYPE=$(echo "$concept_json" | jq -r '.source_type')
+    FREQUENCY=$(echo "$concept_json" | jq -r '.frequency')
+    CONFIDENCE=$(echo "$concept_json" | jq -r '.confidence')
+    
+    # Skip if any required field is null
+    if [[ "$NAME" == "null" || "$SOURCE_TYPE" == "null" || "$CONFIDENCE" == "null" ]]; then
+        [[ "$VERBOSE" == "true" ]] && echo "Skipping concept with null fields: $concept_json"
+        continue
+    fi
+    
+    # Generate concept ID (simple hash of name for now)
+    CONCEPT_ID=$(echo -n "$NAME" | shasum -a 256 | cut -d' ' -f1 | cut -c1-16)
+    
+    # Calculate weights based on source type
+    if [[ "$SOURCE_TYPE" == "human" ]]; then
+        HUMAN_WEIGHT="$CONFIDENCE"
+        AI_WEIGHT="0"
+    else
+        HUMAN_WEIGHT="0"
+        AI_WEIGHT="$CONFIDENCE"
+    fi
+    
+    # Escape single quotes for SQL
+    SAFE_NAME=$(echo "$NAME" | sed "s/'/''/g")
+    
+    # Insert or update concept
+    sqlite3 "$KG_DB" "
+        INSERT OR REPLACE INTO concepts (id, name, weight, human_weight, ai_weight, created, updated)
+        VALUES ('$CONCEPT_ID', '$SAFE_NAME', $CONFIDENCE, $HUMAN_WEIGHT, $AI_WEIGHT, '$TIMESTAMP', '$TIMESTAMP')
+    "
+    
+    # Insert aliases
+    echo "$concept_json" | jq -r '.aliases[]?' | while IFS= read -r alias; do
+        if [[ -n "$alias" && "$alias" != "null" ]]; then
+            SAFE_ALIAS=$(echo "$alias" | sed "s/'/''/g")
+            sqlite3 "$KG_DB" "
+                INSERT OR REPLACE INTO aliases (canonical_id, alias, source, count)
+                VALUES ('$CONCEPT_ID', '$SAFE_ALIAS', '$SOURCE_TYPE', $FREQUENCY)
+            "
+        fi
+    done
+    
+    ((CONCEPTS_COUNT++))
+    [[ "$VERBOSE" == "true" ]] && echo "Processed concept: $NAME (ID: $CONCEPT_ID)"
+    
+done < <(echo "$CONCEPTS_JSON" | jq -r '.concepts[]? | @json')
+
+# Update run statistics
+COMPLETION_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+sqlite3 "$KG_DB" "
+    UPDATE distillation_runs 
+    SET status='completed', 
+        completed_at='$COMPLETION_TIME',
+        concepts_extracted=$CONCEPTS_COUNT
+    WHERE id=$RUN_ID
+"
+
+# Output results
+[[ "$VERBOSE" == "true" ]] && echo "Distillation run $RUN_ID completed"
+
+case "$FORMAT" in
+    "json")
+        sqlite3 "$KG_DB" -json "
+            SELECT json_object(
+                'run_id', $RUN_ID,
+                'concepts_extracted', $CONCEPTS_COUNT,
+                'started_at', '$START_TIME',
+                'completed_at', '$COMPLETION_TIME'
+            ) as result
+        "
+        ;;
+    "text"|*)
+        echo "Knowledge Graph Distillation Complete"
+        echo "=================================="
+        echo "Run ID: $RUN_ID"
+        echo "Concepts extracted: $CONCEPTS_COUNT"
+        echo "Database: $KG_DB"
+        
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo
+            echo "Top concepts by weight:"
+            sqlite3 "$KG_DB" -column "
+                SELECT name, printf('%.2f', weight) as weight, 
+                       CASE WHEN human_weight > ai_weight THEN 'human' ELSE 'ai' END as primary_source
+                FROM concepts 
+                ORDER BY weight DESC 
+                LIMIT 10
+            "
+        fi
+        ;;
+esac
+
+[[ "$VERBOSE" == "true" ]] && echo "Knowledge graph distillation complete"

@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+
+# extract-concepts - Extract concepts from knowledge events for knowledge graph
+
+set -euo pipefail
+
+# Source configuration and modular libraries
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/files.sh"
+source "$KS_ROOT/lib/time.sh"
+source "$KS_ROOT/lib/validation.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/tools/lib/claude.sh"
+source "$KS_ROOT/tools/lib/analysis.sh"
+
+# Standardized usage function
+usage() {
+    declare -a arguments=()
+    declare -a examples=(
+        "extract-concepts --days 7"
+        "extract-concepts --since 2024-03-01 --verbose"
+    )
+    ks_generate_usage \
+        "Extract concepts from knowledge events for distilled knowledge graph" \
+        "extract-concepts" \
+        "[options]" \
+        "ANALYZE" \
+        arguments \
+        examples
+}
+
+# Parse arguments using the new library
+ks_parse_category_args "ANALYZE" -- "$@"
+
+# Validate options
+ks_validate_analyze_options "$DAYS" "$SINCE" "$TYPE" "$FORMAT" "$VERBOSE"
+
+# Extract events from all sources
+CONTENT=$(ks_extract_events "$DAYS" "$SINCE" "$(ks_build_filter "$TYPE" "")")
+
+[[ -z "$CONTENT" ]] && { echo "No events found in the last $DAYS days"; exit $EXIT_SUCCESS; }
+
+# Prepare AI prompt for concept extraction
+PROMPT="Analyze the following knowledge events and extract key concepts for a knowledge graph.
+
+$CONTENT
+
+Extract concepts that represent:
+1. Core ideas, themes, and topics
+2. People, places, and entities mentioned
+3. Technical terms and domain-specific concepts
+4. Recurring patterns and mental models
+
+For each concept, identify:
+- Canonical name (normalized form)
+- Alternative names/variations that refer to the same concept
+- Source classification (human-generated vs AI-generated content)
+
+Return ONLY valid JSON in this format:
+{
+  \"concepts\": [
+    {
+      \"name\": \"canonical concept name\",
+      \"aliases\": [\"alternative name 1\", \"variation 2\"],
+      \"source_type\": \"human\" or \"ai\",
+      \"frequency\": number of times concept appears,
+      \"confidence\": 0-1 score for concept importance
+    }
+  ]
+}
+
+Focus on concepts that appear multiple times or seem central to understanding the knowledge."
+
+# Execute AI analysis
+[[ "$VERBOSE" == "true" ]] && echo "Extracting concepts from $DAYS days of events..."
+
+RESPONSE=$(ks_claude_analyze "$PROMPT" "$CONTENT")
+
+# Validate JSON response
+if ! echo "$RESPONSE" | jq empty 2>/dev/null; then
+    ks_exit_error "Invalid JSON response from Claude: $RESPONSE"
+fi
+
+# Output results
+case "$FORMAT" in
+    "json")
+        echo "$RESPONSE"
+        ;;
+    "text"|*)
+        echo "$RESPONSE" | jq -r '
+            if .concepts then
+                "Found " + (.concepts | length | tostring) + " concepts:\n" +
+                (.concepts[] | 
+                    "• " + .name + 
+                    (if .aliases | length > 0 then " (aka: " + (.aliases | join(", ")) + ")" else "" end) +
+                    " [" + .source_type + ", freq: " + (.frequency | tostring) + 
+                    ", conf: " + (.confidence | tostring) + "]"
+                )
+            else
+                "No concepts extracted"
+            end
+        '
+        ;;
+esac
+
+[[ "$VERBOSE" == "true" ]] && echo "Concept extraction complete"
