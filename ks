@@ -76,6 +76,7 @@ show_usage() {
     
     echo "Options:"
     echo "  -h, --help           show this help and exit"
+    echo "      --claudehelp     show help for ks and key capture tools"
     echo "      --allhelp        show help for all tools"
     echo ""
     echo "Examples:"
@@ -89,6 +90,22 @@ show_all_help() {
     show_usage true
     echo
     parallel_process_tools process_tool_help
+}
+
+show_claude_help() {
+    echo "ks --claudehelp"
+    echo ""
+    show_usage
+    echo ""
+    echo "=== Key Capture Tools ==="
+    echo ""
+    for tool in events query; do
+        if [[ -n "${TOOL_MAP[$tool]:-}" ]]; then
+            echo "--- $tool ---"
+            "${TOOL_MAP[$tool]}" --help
+            echo ""
+        fi
+    done
 }
 
 process_tool_help() {
@@ -120,10 +137,10 @@ interactive_mode() {
     {
         echo "# Knowledge System Tool Reference"
         echo ""
-        echo "Complete reference for all available tools in this knowledge system."
+        echo "Core knowledge system CLI and key capture tools."
         echo "Each tool can be invoked directly using the paths shown below."
         echo ""
-        show_all_help
+        show_claude_help
     } > "$SCRIPT_DIR/chat/.claude/ks-instructions.md"
     
     cd "$SCRIPT_DIR/chat"
@@ -143,6 +160,9 @@ discover_tools
 case "${1:-}" in
     --allhelp)
         show_all_help
+        ;;
+    --claudehelp)
+        show_claude_help
         ;;
     --help|-h)
         show_usage

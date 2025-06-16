@@ -22,7 +22,7 @@ ks_generate_usage() {
     fi
     
     # Header
-    echo "$description"
+    echo "Description: $description"
     echo ""
     echo "Usage: $tool_name $usage_pattern"
     echo ""
