@@ -79,9 +79,9 @@ parse_arguments() {
         exit 1
     fi
     
-    # Set derived paths
-    LOG_FILE="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME.log"
-    JSONL_FILE="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME.jsonl"
+    # Set derived paths (absolute paths)
+    LOG_FILE="$(realpath "$CONVERSATION_DIR")/conversants/$CONVERSANT_NAME.log"
+    JSONL_FILE="$(realpath "$CONVERSATION_DIR")/conversants/$CONVERSANT_NAME.jsonl"
 }
 
 # Load conversant configuration
@@ -129,7 +129,11 @@ record_conversant_event() {
     local timestamp
     timestamp=$(ks_timestamp)
     
-    local event_json="{\"timestamp\":\"$timestamp\",\"type\":\"$event_type\",\"conversant\":\"$CONVERSANT_NAME\",\"content\":$(echo "$content" | jq -R .)}"
+    # Properly escape content as JSON string, handling multiline content
+    local escaped_content
+    escaped_content=$(printf '%s' "$content" | jq -Rs .)
+    
+    local event_json="{\"timestamp\":\"$timestamp\",\"type\":\"$event_type\",\"conversant\":\"$CONVERSANT_NAME\",\"content\":$escaped_content}"
     echo "$event_json" >> "$JSONL_FILE"
 }
 
@@ -137,72 +141,180 @@ record_conversant_event() {
 setup_claude_environment() {
     log_info "Setting up Claude environment for conversant: $CONVERSANT_NAME"
     
-    # Create conversant-specific directory if it doesn't exist
-    mkdir -p "$CONVERSATION_DIR/conversants/$CONVERSANT_NAME"
+    # Create conversant-specific directory structure
+    local conversant_dir="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME"
+    mkdir -p "$conversant_dir"
+    
+    # Create .claude directory for Claude CLI initialization
+    mkdir -p "$conversant_dir/.claude"
+    
+    # Create events directory for knowledge capture (Phase 3)
+    mkdir -p "$conversant_dir/events"
+    
+    # Create symlinks to ks tools for knowledge capture
+    if [[ -n "${KS_ROOT:-}" && -d "$KS_ROOT/tools" ]]; then
+        ln -sf "$KS_ROOT/tools" "$conversant_dir/tools"
+        # Also create ks command symlink for convenience
+        ln -sf "$KS_ROOT/ks" "$conversant_dir/ks"
+    fi
     
     # Ensure log files exist
     touch "$LOG_FILE"
     touch "$JSONL_FILE"
     
-    log_info "Environment setup complete"
+    # Generate complete ks-instructions.md file with persona, context, and tools
+    create_claude_instructions
+    
+    log_info "Environment setup complete with knowledge capture directories"
 }
 
-prepare_system_prompt() {
-    local system_prompt="$PERSONA"
+create_claude_instructions() {
+    local instructions_file="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME/.claude/ks-instructions.md"
     
-    # Add logex context information
-    system_prompt="$system_prompt
-
-You are participating in an automated dialogue as '$CONVERSANT_NAME'. This is part of a logex (dialogue composer) conversation. Your responses will be used to continue the dialogue with other participants."
+    log_info "Creating Claude instructions file: $instructions_file"
     
-    # Add current conversation context if provided
-    if [[ -n "$CONVERSATION_CONTEXT" ]]; then
-        system_prompt="$system_prompt
-
-Current conversation context: $CONVERSATION_CONTEXT"
-    fi
+    {
+        echo "# Logex Conversant: $CONVERSANT_NAME"
+        echo ""
+        echo "## Persona"
+        echo ""
+        echo "$PERSONA"
+        echo ""
+        
+        if [[ -n "$CONVERSATION_CONTEXT" ]]; then
+            echo "## Current Context"
+            echo ""
+            echo "$CONVERSATION_CONTEXT"
+            echo ""
+        fi
+        
+        echo "## Logex Instructions"
+        echo ""
+        echo "You are participating in an automated dialogue as '$CONVERSANT_NAME'. This is part of a logex (dialogue composer) conversation system."
+        echo ""
+        echo "**Important Guidelines for Automated Conversation:**"
+        echo "- Provide a single, focused response when prompted"
+        echo "- Stay in character as '$CONVERSANT_NAME' throughout the conversation"
+        echo "- You can use ks capture tools (events, query) to record insights or search existing knowledge"
+        echo "- After providing your response, type 'END_SESSION' to conclude your turn"
+        echo "- Keep responses conversational but concise (1-3 paragraphs)"
+        echo "- Use tools proactively to capture interesting insights from the dialogue"
+        echo ""
+        echo "**Knowledge Capture Examples:**"
+        echo "- \`events insight \"dialogue-patterns\" \"Noticed interesting turn-taking in this conversation\"\`"
+        echo "- \`query \"relevant topic\" --days 7\` to search existing knowledge"
+        echo "- Record observations about the conversation dynamics or content"
+        echo ""
+        
+        # Include the complete ks tools reference from show_claude_help
+        echo "## Knowledge System Tools"
+        echo ""
+        echo "Available ks capture tools for recording insights and searching knowledge:"
+        echo ""
+        
+        # Include the actual ks tools help output (same as interactive mode)
+        "$KS_ROOT/ks" --claudehelp | tail -n +3  # Skip the "ks --claudehelp" header line
+        echo ""
+        
+        # Add tool reference - we'll enhance this to include actual show_claude_help output
+        echo "---"
+        echo "*Logex conversation context for $CONVERSANT_NAME*"
+        echo "*Working directory: $CONVERSATION_DIR/conversants/$CONVERSANT_NAME*"
+        
+    } > "$instructions_file"
     
-    echo "$system_prompt"
+    log_info "Claude instructions created: ${#PERSONA} chars persona, context: ${CONVERSATION_CONTEXT:+present}"
 }
 
 run_claude_session() {
-    log_info "Starting Claude session for: $CONVERSANT_NAME"
-    
-    # Prepare system prompt
-    local system_prompt
-    system_prompt=$(prepare_system_prompt)
+    log_info "Starting real Claude session for: $CONVERSANT_NAME"
     
     # Record session start
-    record_conversant_event "session_started" "persona: $PERSONA"
+    record_conversant_event "session_started" "persona: $PERSONA, context: ${CONVERSATION_CONTEXT:-none}"
     
-    # For now, create a simple mock implementation
-    # TODO: Integrate with actual Claude CLI once full integration is ready
-    log_info "Mock Claude session - would inject persona and handle conversation"
-    log_info "System prompt length: ${#system_prompt} characters"
+    # Change to conversant directory where .claude/ks-instructions.md is located
+    local conversant_dir="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME"
     
-    # Simulate Claude processing
-    local mock_response="Hello, I'm $CONVERSANT_NAME. I'm ready to participate in this dialogue about the conversation topic."
+    log_info "Running Claude CLI in: $conversant_dir"
+    log_info "Instructions file: .claude/ks-instructions.md"
     
+    # Run actual Claude CLI in the conversant directory
+    local claude_output
+    local claude_exit_code
+    
+    # Run Claude and capture output
+    cd "$conversant_dir" || {
+        log_error "Failed to change to conversant directory: $conversant_dir"
+        return 1
+    }
+    
+    # Prepare initial prompt for Claude
+    local initial_prompt="Please provide a response as $CONVERSANT_NAME."
     if [[ -n "$CONVERSATION_CONTEXT" ]]; then
-        mock_response="$mock_response I understand the current context: $CONVERSATION_CONTEXT"
+        initial_prompt="$initial_prompt $CONVERSATION_CONTEXT"
     fi
     
-    # Record the mock response
-    record_conversant_event "response_generated" "$mock_response"
-    log_info "Mock response generated: ${#mock_response} characters"
+    # Add instruction to end the session
+    initial_prompt="$initial_prompt
+
+After providing your response, please type 'END_SESSION' to conclude this turn."
     
-    # For testing purposes, create a simple interaction loop
-    # This will be replaced with actual Claude CLI integration
-    echo "Mock Claude session for $CONVERSANT_NAME"
-    echo "Persona: $PERSONA"
-    echo "Context: $CONVERSATION_CONTEXT"
-    echo "Response: $mock_response"
+    # Use a timeout to prevent hanging conversations
+    # Provide initial prompt via stdin and capture output
+    if claude_output=$(echo "$initial_prompt" | timeout 120 claude 2>&1); then
+        claude_exit_code=0
+        log_info "Claude session completed successfully"
+    else
+        claude_exit_code=$?
+        log_error "Claude session failed with exit code: $claude_exit_code"
+        claude_output="Error: Claude session failed or timed out"
+    fi
     
-    # Simulate some processing time
-    sleep 1
+    # Process and record the Claude response
+    if [[ $claude_exit_code -eq 0 && -n "$claude_output" ]]; then
+        # Record the actual Claude response
+        record_conversant_event "response_generated" "$claude_output"
+        log_info "Claude response captured: ${#claude_output} characters"
+        
+        # Check for any events captured during the session
+        check_knowledge_capture
+        
+        # Output for orchestrator
+        echo "Real Claude session for $CONVERSANT_NAME"
+        echo "Working directory: $conversant_dir"
+        echo "Response: $claude_output"
+    else
+        # Handle failure case
+        record_conversant_event "session_failed" "exit_code: $claude_exit_code, output: $claude_output"
+        log_error "Claude session failed for $CONVERSANT_NAME"
+        
+        # Provide fallback response to keep conversation flowing
+        local fallback_response="I'm $CONVERSANT_NAME, but I'm having trouble responding right now."
+        echo "Claude session failed for $CONVERSANT_NAME"
+        echo "Fallback response: $fallback_response"
+        
+        # Record fallback
+        record_conversant_event "fallback_response" "$fallback_response"
+    fi
     
-    log_info "Claude session completed for: $CONVERSANT_NAME"
-    record_conversant_event "session_completed" "response_length: ${#mock_response}"
+    record_conversant_event "session_completed" "exit_code: $claude_exit_code, response_length: ${#claude_output}"
+}
+
+check_knowledge_capture() {
+    local conversant_dir="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME"
+    local events_count=0
+    
+    # Check if any events were captured during the Claude session
+    if [[ -f "$conversant_dir/events/hot.jsonl" ]]; then
+        events_count=$(wc -l < "$conversant_dir/events/hot.jsonl" 2>/dev/null || echo "0")
+        if [[ $events_count -gt 0 ]]; then
+            log_info "Knowledge capture: $events_count events recorded during session"
+            record_conversant_event "knowledge_captured" "events_count: $events_count"
+        fi
+    fi
+    
+    # Could also check for query usage, file modifications, etc.
+    log_info "Knowledge capture check complete: $events_count events"
 }
 
 # Signal handling
@@ -220,11 +332,11 @@ main() {
     # Parse command line arguments
     parse_arguments "$@"
     
+    # Load conversant configuration (needed before setup)
+    load_conversant_config
+    
     # Setup environment and logging
     setup_claude_environment
-    
-    # Load conversant configuration
-    load_conversant_config
     
     # Run the Claude session
     run_claude_session

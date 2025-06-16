@@ -155,20 +155,50 @@ get_next_speaker() {
 prepare_turn_context() {
     local current_speaker="$1"
     
-    # For now, simple context preparation
-    # Future enhancement: inject previous utterances, conversation summary, etc.
-    
     local context=""
     if [[ $TOTAL_TURNS -eq 0 ]]; then
         context="$INITIAL_PROMPT"
     else
-        # Get last utterance for context
+        # Get actual response from previous speaker
         local last_speaker
         last_speaker=$(get_last_speaker)
-        context="Continuing conversation. Previous speaker was $last_speaker."
+        
+        # Extract the most recent response from the previous speaker
+        local last_response
+        last_response=$(get_last_response "$last_speaker")
+        
+        if [[ -n "$last_response" ]]; then
+            # Include actual previous response in context
+            context="Continuing conversation. $last_speaker just said:
+
+$last_response
+
+Please respond as $current_speaker."
+        else
+            # Fallback to simple context
+            context="Continuing conversation. Previous speaker was $last_speaker. Please respond as $current_speaker."
+        fi
     fi
     
     echo "$context"
+}
+
+get_last_response() {
+    local speaker="$1"
+    local speaker_jsonl="$CONVERSATION_DIR/conversants/$speaker.jsonl"
+    
+    if [[ ! -f "$speaker_jsonl" ]]; then
+        return
+    fi
+    
+    # Get the most recent response_generated event from the speaker
+    local last_response
+    last_response=$(grep '"type":"response_generated"' "$speaker_jsonl" | tail -1 | jq -r '.content' 2>/dev/null || echo "")
+    
+    # Clean up the response - remove END_SESSION marker and extra newlines
+    last_response=$(echo "$last_response" | sed 's/END_SESSION$//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
+    echo "$last_response"
 }
 
 get_last_speaker() {
@@ -200,14 +230,45 @@ check_exit_conditions() {
         return 0
     fi
     
-    # Check for exit keywords in recent outputs
-    # TODO: Implement keyword detection in conversant outputs
+    # Check for exit keywords in recent Claude responses
+    if check_exit_keywords_in_responses; then
+        log_info "Exit condition met: exit keyword detected in conversation"
+        return 0
+    fi
     
     # Check for manual stop signal
     if [[ -f "$CONVERSATION_DIR/supervise/stop_signal" ]]; then
         log_info "Exit condition met: manual stop signal detected"
         return 0
     fi
+    
+    return 1
+}
+
+check_exit_keywords_in_responses() {
+    # Check if any exit keywords appear in the most recent responses
+    for conversant in "${CONVERSANTS[@]}"; do
+        local conversant_jsonl="$CONVERSATION_DIR/conversants/$conversant.jsonl"
+        
+        if [[ ! -f "$conversant_jsonl" ]]; then
+            continue
+        fi
+        
+        # Get the most recent response from this conversant
+        local recent_response
+        recent_response=$(grep '"type":"response_generated"' "$conversant_jsonl" | tail -1 | jq -r '.content' 2>/dev/null || echo "")
+        
+        if [[ -n "$recent_response" ]]; then
+            # Check each exit keyword
+            for keyword in "${EXIT_KEYWORDS[@]}"; do
+                # Case-insensitive keyword matching
+                if echo "$recent_response" | grep -qi "$keyword"; then
+                    log_info "Exit keyword '$keyword' found in $conversant response"
+                    return 0
+                fi
+            done
+        fi
+    done
     
     return 1
 }

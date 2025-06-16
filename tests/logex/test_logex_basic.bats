@@ -137,16 +137,30 @@ teardown() {
 @test "claude-instance wrapper works correctly" {
     "$KS_CMD" configure --template simple --output claude-test
     
-    # Test claude-instance with alice
-    run "$KS_ROOT/tools/logex/claude-instance" --conversant alice --conversation-dir claude-test --context "test context"
+    # Test claude-instance with alice (Phase 3: Real Claude CLI)
+    run timeout 60 "$KS_ROOT/tools/logex/claude-instance" --conversant alice --conversation-dir claude-test --context "test context"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Mock Claude session for alice" ]]
+    [[ "$output" =~ "Real Claude session for alice" ]]
+    
+    # Verify directory structure was created
+    [ -d "claude-test/conversants/alice" ]
+    [ -d "claude-test/conversants/alice/.claude" ]
+    [ -d "claude-test/conversants/alice/events" ]
+    [ -L "claude-test/conversants/alice/ks" ]
+    [ -L "claude-test/conversants/alice/tools" ]
     
     # Verify log files were created
     [ -f "claude-test/conversants/alice.log" ]
     [ -f "claude-test/conversants/alice.jsonl" ]
     
-    # Verify JSONL content
+    # Verify .claude/ks-instructions.md was created
+    [ -f "claude-test/conversants/alice/.claude/ks-instructions.md" ]
+    
+    # Verify JSONL content is valid JSON
+    run jq empty claude-test/conversants/alice.jsonl
+    [ "$status" -eq 0 ]
+    
+    # Verify session events were recorded
     run grep "session_started" claude-test/conversants/alice.jsonl
     [ "$status" -eq 0 ]
     
@@ -158,13 +172,13 @@ teardown() {
     "$KS_CMD" configure --template simple --output worker-test
     "$KS_CMD" orchestrate worker-test
     
-    # Run orchestrate-worker for a short conversation
+    # Run orchestrate-worker for a short conversation with real Claude
     # First, create a config with shorter turn limits for faster testing
-    sed -i '' 's/max_turns_per_conversant: 5/max_turns_per_conversant: 2/' worker-test/logex-config.yaml
-    sed -i '' 's/max_total_turns: 10/max_total_turns: 4/' worker-test/logex-config.yaml
+    sed -i '' 's/max_turns_per_conversant: 5/max_turns_per_conversant: 1/' worker-test/logex-config.yaml
+    sed -i '' 's/max_total_turns: 10/max_total_turns: 2/' worker-test/logex-config.yaml
     
-    # Run the worker
-    run timeout 30 "$KS_ROOT/tools/logex/orchestrate-worker" worker-test
+    # Run the worker (Phase 3: Real Claude integration)
+    run timeout 120 "$KS_ROOT/tools/logex/orchestrate-worker" "$(pwd)/worker-test"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "Conversation orchestration completed" ]]
     
@@ -185,4 +199,21 @@ teardown() {
     
     run grep "bob" worker-test/knowledge/conversation.jsonl
     [ "$status" -eq 0 ]
+    
+    # Verify real Claude responses were captured
+    [ -f "worker-test/conversants/alice.jsonl" ]
+    [ -f "worker-test/conversants/bob.jsonl" ]
+    
+    # Verify JSONL format is valid
+    run jq empty worker-test/conversants/alice.jsonl
+    [ "$status" -eq 0 ]
+    
+    run jq empty worker-test/conversants/bob.jsonl
+    [ "$status" -eq 0 ]
+    
+    # Verify knowledge capture infrastructure was created
+    [ -d "worker-test/conversants/alice/events" ]
+    [ -d "worker-test/conversants/bob/events" ]
+    [ -L "worker-test/conversants/alice/ks" ]
+    [ -L "worker-test/conversants/bob/ks" ]
 }
