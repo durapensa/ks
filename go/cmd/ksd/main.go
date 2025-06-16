@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -221,29 +220,21 @@ func max(a, b int64) int64 {
 // Load dashboard data from system with config
 func loadDashboardDataWithConfig(cfg *config.Config) tea.Cmd {
 	return func() tea.Msg {
-		// Get event count - use context-aware counting
+		// Get event count - use bash command for both modes (consistent with status mode)
 		var totalEvents int
+		cmd := exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/lib/events.sh; ks_count_new_events")
 		if cfg.IsConversation {
-			// Count events in local hot log
-			if file, err := os.Open(cfg.HotLog); err == nil {
-				defer file.Close()
-				scanner := bufio.NewScanner(file)
-				for scanner.Scan() {
-					totalEvents++
-				}
-			}
-		} else {
-			// Use global event counting
-			cmd := exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/lib/events.sh; ks_count_new_events")
-			if output, err := cmd.Output(); err == nil {
-				totalEvents, _ = strconv.Atoi(strings.TrimSpace(string(output)))
-			}
+			// Set working directory for conversation context
+			cmd.Dir = cfg.ConversationDir
+		}
+		if output, err := cmd.Output(); err == nil {
+			totalEvents, _ = strconv.Atoi(strings.TrimSpace(string(output)))
 		}
 
 		// Get pending analyses count
 		var pendingCount int
-		cmd := exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/tools/lib/queue.sh; ks_queue_list_pending | jq 'length'")
-		if output, err := cmd.Output(); err == nil {
+		pendingCmd := exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/tools/lib/queue.sh; ks_queue_list_pending | jq 'length'")
+		if output, err := pendingCmd.Output(); err == nil {
 			pendingCount, _ = strconv.Atoi(strings.TrimSpace(string(output)))
 		}
 
@@ -420,12 +411,15 @@ func (m model) View() string {
 		return fmt.Sprintf("Error: %v\n\nPress q to quit.", m.error)
 	}
 
-	// Title with context
+	// Title with context and path info
 	var title string
+	var pathInfo string
 	if m.config.IsConversation {
 		title = titleStyle.Width(80).Render(fmt.Sprintf("KNOWLEDGE SYSTEM - %s", strings.ToUpper(m.config.ContextName)))
+		pathInfo = statusStyle.Render(fmt.Sprintf("Knowledge: %s", m.config.KnowledgeDir))
 	} else {
 		title = titleStyle.Width(80).Render("KNOWLEDGE SYSTEM DASHBOARD")
+		pathInfo = statusStyle.Render(fmt.Sprintf("Knowledge: %s | Hot Log: %s", m.config.KnowledgeDir, m.config.HotLog))
 	}
 	
 	// Navigation breadcrumb with context info
@@ -469,7 +463,7 @@ func (m model) View() string {
 	// Help text
 	help := m.renderHelp()
 
-	return fmt.Sprintf("%s\n%s\n%s\n\n%s\n\n%s", title, nav, separator, content, help)
+	return fmt.Sprintf("%s\n%s\n%s\n%s\n\n%s\n\n%s", title, pathInfo, nav, separator, content, help)
 }
 
 func (m model) renderDashboard() string {
