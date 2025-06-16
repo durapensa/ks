@@ -5,15 +5,19 @@ all: build
 
 # Build all binaries
 build:
-	@echo "Building test binaries..."
+	@echo "Building binaries..."
 	@mkdir -p bin
 	@go build -o bin/event-viewer ./cmd/event-viewer
+	@go build -o bin/ksd ./cmd/ksd
 	@echo "Built to go/bin/"
 
-# Build ksd to project root (when ready)
-build-ksd:
-	@echo "Building ksd..."
-	@go build -o ../ksd ./cmd/ksd
+# Install ksd to project root (replacing bash version)
+install-ksd:
+	@echo "Installing new TUI ksd..."
+	@go build -o bin/ksd ./cmd/ksd
+	@cp ../ksd ../ksd-legacy
+	@cp bin/ksd ../ksd
+	@echo "New TUI ksd installed (legacy version saved as ksd-legacy)"
 
 # Run tests
 test:
