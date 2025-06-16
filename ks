@@ -97,21 +97,8 @@ show_claude_help() {
     echo ""
     show_usage
     echo ""
-    echo "=== Key Capture Tools ==="
-    echo ""
-    for tool in events query; do
+    for tool in events query extract-themes find-connections extract-concepts; do
         if [[ -n "${TOOL_MAP[$tool]:-}" ]]; then
-            echo "--- $tool ---"
-            "${TOOL_MAP[$tool]}" --help
-            echo ""
-        fi
-    done
-    
-    echo "=== Key Analysis Tools ==="
-    echo ""
-    for tool in extract-themes find-connections extract-concepts; do
-        if [[ -n "${TOOL_MAP[$tool]:-}" ]]; then
-            echo "--- $tool ---"
             "${TOOL_MAP[$tool]}" --help
             echo ""
         fi
