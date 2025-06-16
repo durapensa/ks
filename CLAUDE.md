@@ -106,6 +106,84 @@ Use `tools/utils/generate-argparse CATEGORY --tool-name name --description "desc
 
 Scripts load ~50-200 lines instead of the old 420-line monolithic library, with generated argument parsing replacing complex declarative systems.
 
+## ks Tool Development Conventions
+
+**Critical**: All ks tools must follow established conventions for consistency, maintainability, and integration. The logex tools serve as exemplary implementations after major convention alignment (2025-06-16).
+
+### Standard Tool Structure Pattern
+
+**When** creating any new ks tool:
+- **Then** use the standard header format: `#!/usr/bin/env bash` + blank line + `# tool-name - description`
+- **Then** include `set -euo pipefail` for robust error handling
+- **Then** add the standard library sourcing comment: `# Source configuration and modular libraries`
+- **Then** source libraries in this order: `.ks-env`, `core.sh`, `error.sh`, `usage.sh`, `argparse.sh`
+- **Then** source category-specific libraries from `tools/lib/` as needed
+
+### Argument Parsing Requirements
+
+**When** implementing argument parsing for any tool:
+- **Then** use `ks_parse_category_args "CATEGORY" -- "$@"` instead of manual getopt parsing
+- **Then** choose the appropriate category: ANALYZE, CAPTURE_INPUT, CAPTURE_SEARCH, PLUMBING, INTROSPECT, LOGEX, or UTILS
+- **Then** implement usage() with `ks_generate_usage` following the standard pattern:
+  ```bash
+  usage() {
+      declare -a arguments=(...)
+      declare -a examples=(...)
+      ks_generate_usage \
+          "Tool description" \
+          "tool-name" \
+          "[options] ARGS" \
+          "CATEGORY" \
+          arguments \
+          examples
+  }
+  ```
+- **Then** use `REMAINING_ARGS` array for positional arguments after parsing
+
+### Error Handling Standards
+
+**When** implementing error conditions in tools:
+- **Then** use `ks_exit_usage` for argument validation errors
+- **Then** use `ks_exit_error` for runtime failures
+- **Then** use `ks_exit_validation` for input validation errors
+- **Then** avoid manual `echo ... >&2; exit 1` patterns
+
+### Convention Validation Workflow
+
+**When** modifying existing tools or reviewing tool implementations:
+- **Then** verify usage() function uses `ks_generate_usage` (not `cat << EOF`)
+- **Then** confirm argument parsing uses category-based system (not manual `while/case` loops)
+- **Then** check error handling uses standard `ks_exit_*` functions
+- **Then** validate header comments follow `# tool-name - description` format
+- **Then** ensure library sourcing includes the standard comment and order
+
+**When** creating tools with custom options not in existing categories:
+- **Then** first check if the tool fits UTILS category for specialized tools
+- **Then** consider extending an existing category if the options are broadly applicable
+- **Then** use `ks_parse_custom_args` if truly custom options are needed
+- **Then** document the rationale for deviating from standard categories
+
+### Integration Testing
+
+**When** completing tool development or modification:
+- **Then** run `./tests/run_fast_tests.sh` to verify no regressions
+- **Then** test `--help` functionality manually
+- **Then** verify error handling with invalid arguments
+- **Then** ensure the tool integrates correctly with `ks` command discovery
+
+### Reference Implementations
+
+**Best Practice Examples**:
+- **Category-based tools**: `tools/analyze/extract-themes`, `tools/capture/query`
+- **LOGEX tools**: `tools/logex/configure`, `tools/logex/claude-instance` (post-2025-06-16 refactoring)
+- **Library usage**: `tools/capture/events` for comprehensive library integration
+
+**Anti-patterns to Avoid**:
+- Manual getopt parsing with 40+ line `while/case` constructs
+- Custom `parse_arguments()` functions duplicating library functionality
+- `cat << EOF` usage functions instead of `ks_generate_usage`
+- Direct `exit 1` instead of `ks_exit_*` functions
+
 ## Development Priorities
 
 Active work is tracked through GitHub milestones:
