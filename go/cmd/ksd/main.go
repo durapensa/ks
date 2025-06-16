@@ -156,15 +156,19 @@ func initFileWatcher(cfg *config.Config) tea.Cmd {
 	return func() tea.Msg {
 		watcher, err := fsnotify.NewWatcher()
 		if err != nil {
-			return watcherErrorMsg{err}
+			// Log error but don't crash - continue without file watching
+			log.Printf("Failed to create file watcher: %v", err)
+			return nil
 		}
 
 		// Watch the hot log file if it exists
 		if cfg.HotLog != "" {
 			err = watcher.Add(cfg.HotLog)
 			if err != nil {
-				// File might not exist yet, that's okay
-				return watcherErrorMsg{err}
+				// File might not exist yet, that's okay - close watcher and continue
+				watcher.Close()
+				log.Printf("Failed to watch file %s: %v", cfg.HotLog, err)
+				return nil
 			}
 		}
 
@@ -190,6 +194,9 @@ func watchForChanges(watcher *fsnotify.Watcher) tea.Cmd {
 				return nil
 			}
 			return watcherErrorMsg{err}
+		case <-time.After(time.Second * 30):
+			// Timeout to prevent blocking, return nil to continue watching
+			return nil
 		}
 		return nil
 	}
@@ -364,6 +371,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			// Clean up file watcher before quitting
+			if m.watcher != nil {
+				m.watcher.Close()
+			}
 			return m, tea.Quit
 
 		// Screen navigation
