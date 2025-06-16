@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/durapensa/ks/pkg/config"
@@ -119,7 +120,13 @@ type searchResultsMsg struct {
 	term    string
 }
 
-// File watcher messages removed - using polling instead
+type fileWatchMsg struct {
+	event fsnotify.Event
+}
+
+type fileWatchErrorMsg struct {
+	err error
+}
 
 // Initialize the model
 func initialModel() model {
@@ -138,14 +145,45 @@ func initialModel() model {
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		loadDashboardDataWithConfig(m.config),
-		// Fast polling for responsive updates
-		tea.Every(time.Second*2, func(time.Time) tea.Msg {
-			return loadDashboardDataWithConfig(m.config)()
-		}),
+		watchFile(m.config.HotLog), // Start file watching
 	)
 }
 
-// File watcher removed - using fast polling instead for simplicity and reliability
+// Command to watch a file for changes using fsnotify
+// This follows Bubbletea's pattern: a command waits for ONE event and returns it as a message
+func watchFile(path string) tea.Cmd {
+	return func() tea.Msg {
+		if path == "" {
+			return fileWatchErrorMsg{err: fmt.Errorf("no file path provided")}
+		}
+
+		watcher, err := fsnotify.NewWatcher()
+		if err != nil {
+			return fileWatchErrorMsg{err: err}
+		}
+		defer watcher.Close()
+
+		err = watcher.Add(path)
+		if err != nil {
+			return fileWatchErrorMsg{err: err}
+		}
+
+		// Wait for ONE event and return it as a message
+		// Bubbletea's runtime automatically handles this in a goroutine
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return fileWatchErrorMsg{err: fmt.Errorf("watcher events channel closed")}
+			}
+			return fileWatchMsg{event: event}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return fileWatchErrorMsg{err: fmt.Errorf("watcher errors channel closed")}
+			}
+			return fileWatchErrorMsg{err: err}
+		}
+	}
+}
 
 // Parse the latest event from the hot log
 func parseLatestEvent(cfg *config.Config) *Event {
@@ -400,7 +438,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.error = msg.err
 		m.loading = false
 
-	// File watcher cases removed - using polling instead
+	case fileWatchMsg:
+		// File was modified, reload dashboard and continue watching
+		if msg.event.Op&fsnotify.Write == fsnotify.Write {
+			return m, tea.Batch(
+				loadDashboardDataWithConfig(m.config),
+				watchFile(m.config.HotLog), // Continue watching
+			)
+		}
+		// For other operations, just continue watching
+		return m, watchFile(m.config.HotLog)
+
+	case fileWatchErrorMsg:
+		// Log error and continue watching after a brief delay
+		log.Printf("File watch error: %v", msg.err)
+		return m, tea.Sequence(
+			tea.Tick(time.Second*2, func(time.Time) tea.Msg { return nil }), // Wait 2 seconds
+			watchFile(m.config.HotLog), // Restart watching
+		)
 	}
 
 	return m, nil
