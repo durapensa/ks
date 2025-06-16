@@ -594,9 +594,55 @@ func (m model) renderDashboard() string {
 			content = "No content"
 		}
 		
-		// Content section
+		// Content section - allow up to 3 lines
 		if content != "" {
-			latestEventSection += "Content: " + normalStyle.Render(content) + "\n"
+			// Wrap content to fit within reasonable line lengths (70 chars per line)
+			const maxLineLength = 70
+			const maxLines = 3
+			
+			var lines []string
+			remaining := content
+			
+			for len(lines) < maxLines && len(remaining) > 0 {
+				if len(remaining) <= maxLineLength {
+					lines = append(lines, remaining)
+					break
+				}
+				
+				// Find a good break point (space, comma, period) near the max length
+				breakPoint := maxLineLength
+				if breakPoint > len(remaining) {
+					breakPoint = len(remaining)
+				}
+				
+				// Look for word boundaries to avoid breaking mid-word
+				for i := breakPoint - 1; i >= breakPoint - 20 && i >= 0; i-- {
+					if i < len(remaining) && (remaining[i] == ' ' || remaining[i] == ',' || remaining[i] == '.') {
+						breakPoint = i + 1
+						break
+					}
+				}
+				
+				lines = append(lines, strings.TrimSpace(remaining[:breakPoint]))
+				remaining = strings.TrimSpace(remaining[breakPoint:])
+			}
+			
+			// Add ellipsis if content was truncated
+			if len(remaining) > 0 {
+				if len(lines) == maxLines {
+					lastLine := lines[maxLines-1]
+					if len(lastLine) > maxLineLength-3 {
+						lines[maxLines-1] = lastLine[:maxLineLength-3] + "..."
+					} else {
+						lines[maxLines-1] = lastLine + "..."
+					}
+				}
+			}
+			
+			latestEventSection += "Content:\n"
+			for _, line := range lines {
+				latestEventSection += "  " + normalStyle.Render(line) + "\n"
+			}
 		}
 		
 		// Topic if available
