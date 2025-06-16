@@ -67,12 +67,17 @@ var (
 
 // Event structure for parsing JSONL
 type Event struct {
-	Timestamp string `json:"timestamp"`
-	Type      string `json:"type"`
-	Thought   string `json:"thought,omitempty"`
-	Observation string `json:"observation,omitempty"`
-	Question    string `json:"question,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Timestamp   string                 `json:"ts"`                  // Actual field name is "ts"
+	Type        string                 `json:"type"`
+	Content     string                 `json:"content,omitempty"`   // Most events use "content"
+	Topic       string                 `json:"topic,omitempty"`     // Some events have topic
+	Thought     string                 `json:"thought,omitempty"`   // Legacy support
+	Observation string                 `json:"observation,omitempty"` // Legacy support
+	Question    string                 `json:"question,omitempty"`  // Legacy support
+	Context     string                 `json:"context,omitempty"`
+	Tags        []string               `json:"tags,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	RawJSON     string                 // Store the original JSON line for pretty printing
 }
 
 // Dashboard data
@@ -145,7 +150,7 @@ func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		loadDashboardDataWithConfig(m.config),
 		initFileWatcher(m.config),
-		tea.Every(time.Second*30, func(time.Time) tea.Msg {
+		tea.Every(time.Second*5, func(time.Time) tea.Msg {
 			return loadDashboardDataWithConfig(m.config)()
 		}),
 	)
@@ -177,9 +182,9 @@ func initFileWatcher(cfg *config.Config) tea.Cmd {
 	}
 }
 
-// Watch for file changes
+// Watch for file changes - continuous monitoring
 func watchForChanges(watcher *fsnotify.Watcher) tea.Cmd {
-	return func() tea.Msg {
+	return tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
 		select {
 		case event, ok := <-watcher.Events:
 			if !ok {
@@ -194,12 +199,11 @@ func watchForChanges(watcher *fsnotify.Watcher) tea.Cmd {
 				return nil
 			}
 			return watcherErrorMsg{err}
-		case <-time.After(time.Second * 30):
-			// Timeout to prevent blocking, return nil to continue watching
-			return nil
+		default:
+			// No events ready, continue watching
 		}
 		return nil
-	}
+	})
 }
 
 // Parse the latest event from the hot log
@@ -250,6 +254,9 @@ func parseLatestEvent(cfg *config.Config) *Event {
 	if err := json.Unmarshal([]byte(lastLine), &event); err != nil {
 		return nil
 	}
+
+	// Store the raw JSON for pretty printing
+	event.RawJSON = lastLine
 
 	return &event
 }
@@ -469,11 +476,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, watchForChanges(m.watcher)
 
 	case fileChangeMsg:
-		// File changed, reload data and continue watching
-		return m, tea.Batch(
-			loadDashboardDataWithConfig(m.config),
-			watchForChanges(m.watcher),
-		)
+		// File changed, reload data - watcher continues automatically
+		return m, loadDashboardDataWithConfig(m.config)
 
 	case watcherErrorMsg:
 		// Log watcher error but continue
@@ -582,40 +586,76 @@ func (m model) renderDashboard() string {
 	triggers += fmt.Sprintf("  Theme: %s | Connections: %s | Patterns: %s",
 		themeStatus, connStatus, pattStatus)
 
-	// Latest event section
+	// Latest event section - enhanced display
 	latestEventSection := ""
 	if d.latestEvent != nil {
 		latestEventSection = separatorStyle.Render(strings.Repeat("─", 80)) + "\n"
-		latestEventSection += "LATEST EVENT:\n"
+		latestEventSection += headerStyle.Render("LATEST EVENT") + "\n"
 		
 		// Format timestamp
 		timestamp := d.latestEvent.Timestamp
-		if len(timestamp) > 16 {
-			timestamp = timestamp[:16] // Truncate to just date and time
+		if len(timestamp) > 19 {
+			timestamp = timestamp[:19] // Keep full date and time
 		}
 		
-		// Get event content
+		// Header line with type and timestamp
+		latestEventSection += fmt.Sprintf("Type: %s | Time: %s\n",
+			readyStyle.Render(d.latestEvent.Type),
+			normalStyle.Render(timestamp))
+		
+		// Get main content - prioritize new format, fallback to legacy
 		var content string
-		switch d.latestEvent.Type {
-		case "thought":
+		if d.latestEvent.Content != "" {
+			content = d.latestEvent.Content
+		} else if d.latestEvent.Thought != "" {
 			content = d.latestEvent.Thought
-		case "observation":
+		} else if d.latestEvent.Observation != "" {
 			content = d.latestEvent.Observation
-		case "question":
+		} else if d.latestEvent.Question != "" {
 			content = d.latestEvent.Question
-		default:
+		} else {
 			content = "No content"
 		}
 		
-		// Truncate content if too long
-		if len(content) > 60 {
-			content = content[:57] + "..."
+		// Content section
+		if content != "" {
+			latestEventSection += "Content: " + normalStyle.Render(content) + "\n"
 		}
 		
-		latestEventSection += fmt.Sprintf("  %s | %s | %s",
-			timestamp,
-			readyStyle.Render(d.latestEvent.Type),
-			content)
+		// Topic if available
+		if d.latestEvent.Topic != "" {
+			latestEventSection += "Topic: " + readyStyle.Render(d.latestEvent.Topic) + "\n"
+		}
+		
+		// Context if available
+		if d.latestEvent.Context != "" {
+			latestEventSection += "Context: " + statusStyle.Render(d.latestEvent.Context) + "\n"
+		}
+		
+		// Tags if available
+		if len(d.latestEvent.Tags) > 0 {
+			tagStr := strings.Join(d.latestEvent.Tags, ", ")
+			latestEventSection += "Tags: " + pendingStyle.Render(tagStr) + "\n"
+		}
+		
+		// Metadata if available
+		if len(d.latestEvent.Metadata) > 0 {
+			latestEventSection += "Metadata:\n"
+			for key, value := range d.latestEvent.Metadata {
+				if valueStr, ok := value.(string); ok {
+					if len(valueStr) > 50 {
+						valueStr = valueStr[:47] + "..."
+					}
+					latestEventSection += fmt.Sprintf("  %s: %s\n", 
+						statusStyle.Render(key), 
+						normalStyle.Render(valueStr))
+				} else {
+					latestEventSection += fmt.Sprintf("  %s: %s\n", 
+						statusStyle.Render(key), 
+						normalStyle.Render(fmt.Sprintf("%v", value)))
+				}
+			}
+		}
 	}
 
 	// Pending reviews
