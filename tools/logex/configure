@@ -236,8 +236,9 @@ main() {
         interactive_config "$safe_name" "$config_file"
     fi
     
-    [[ -n "$VERBOSE" ]] && echo "Created conversation structure in: $safe_name"
+    if [[ -n "$VERBOSE" ]]; then
+        echo "Created conversation structure in: $safe_name"
+    fi
 }
 
 main "$@"
-exit 0

@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# Claude CLI wrapper for isolated conversant processes in logex conversations
+# Handles persona injection, context isolation, and response capture
+
+set -euo pipefail
+
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+
+# Configuration variables
+declare -g CONVERSATION_DIR=""
+declare -g CONVERSANT_NAME=""
+declare -g PERSONA=""
+declare -g CONVERSATION_CONTEXT=""
+declare -g LOG_FILE=""
+declare -g JSONL_FILE=""
+
+# Usage function
+usage() {
+    cat << EOF
+Usage: $0 --conversant NAME --conversation-dir DIR [options]
+
+Options:
+  --conversant NAME           Name of the conversant (required)
+  --conversation-dir DIR      Conversation directory (required) 
+  --persona TEXT             Persona/system prompt for this conversant
+  --context TEXT             Current turn context to inject
+  --help                     Show this help message
+
+Environment:
+  CLAUDE_MODEL               Claude model to use (default: from KS_MODEL)
+  
+This script creates an isolated Claude CLI session for a specific conversant
+in a logex conversation, handling persona injection and response capture.
+EOF
+}
+
+# Argument parsing
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --conversant)
+                CONVERSANT_NAME="$2"
+                shift 2
+                ;;
+            --conversation-dir)
+                CONVERSATION_DIR="$2"
+                shift 2
+                ;;
+            --persona)
+                PERSONA="$2"
+                shift 2
+                ;;
+            --context)
+                CONVERSATION_CONTEXT="$2"
+                shift 2
+                ;;
+            --help)
+                usage
+                exit 0
+                ;;
+            *)
+                echo "Error: Unknown argument '$1'" >&2
+                usage >&2
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Validate required arguments
+    if [[ -z "$CONVERSANT_NAME" ]]; then
+        echo "Error: --conversant is required" >&2
+        exit 1
+    fi
+    
+    if [[ -z "$CONVERSATION_DIR" ]]; then
+        echo "Error: --conversation-dir is required" >&2
+        exit 1
+    fi
+    
+    # Set derived paths
+    LOG_FILE="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME.log"
+    JSONL_FILE="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME.jsonl"
+}
+
+# Load conversant configuration
+load_conversant_config() {
+    local config_file="$CONVERSATION_DIR/logex-config.yaml"
+    
+    if [[ ! -f "$config_file" ]]; then
+        echo "Error: Configuration file not found: $config_file" >&2
+        exit 1
+    fi
+    
+    # Extract persona if not provided via argument
+    if [[ -z "$PERSONA" ]]; then
+        PERSONA=$(grep -A 3 "^  $CONVERSANT_NAME:" "$config_file" | grep "persona:" | sed 's/.*persona: *"\([^"]*\)".*/\1/')
+    fi
+    
+    if [[ -z "$PERSONA" ]]; then
+        echo "Error: No persona found for conversant '$CONVERSANT_NAME'" >&2
+        exit 1
+    fi
+}
+
+# Logging functions
+log_to_file() {
+    local level="$1"
+    local message="$2"
+    local timestamp
+    timestamp=$(ks_timestamp)
+    
+    echo "[$timestamp] [$level] [$CONVERSANT_NAME] $message" >> "$LOG_FILE"
+}
+
+log_info() {
+    log_to_file "INFO" "$1"
+}
+
+log_error() {
+    log_to_file "ERROR" "$1"
+}
+
+# Event recording
+record_conversant_event() {
+    local event_type="$1"
+    local content="$2"
+    local timestamp
+    timestamp=$(ks_timestamp)
+    
+    local event_json="{\"timestamp\":\"$timestamp\",\"type\":\"$event_type\",\"conversant\":\"$CONVERSANT_NAME\",\"content\":$(echo "$content" | jq -R .)}"
+    echo "$event_json" >> "$JSONL_FILE"
+}
+
+# Claude CLI interaction
+setup_claude_environment() {
+    log_info "Setting up Claude environment for conversant: $CONVERSANT_NAME"
+    
+    # Create conversant-specific directory if it doesn't exist
+    mkdir -p "$CONVERSATION_DIR/conversants/$CONVERSANT_NAME"
+    
+    # Ensure log files exist
+    touch "$LOG_FILE"
+    touch "$JSONL_FILE"
+    
+    log_info "Environment setup complete"
+}
+
+prepare_system_prompt() {
+    local system_prompt="$PERSONA"
+    
+    # Add logex context information
+    system_prompt="$system_prompt
+
+You are participating in an automated dialogue as '$CONVERSANT_NAME'. This is part of a logex (dialogue composer) conversation. Your responses will be used to continue the dialogue with other participants."
+    
+    # Add current conversation context if provided
+    if [[ -n "$CONVERSATION_CONTEXT" ]]; then
+        system_prompt="$system_prompt
+
+Current conversation context: $CONVERSATION_CONTEXT"
+    fi
+    
+    echo "$system_prompt"
+}
+
+run_claude_session() {
+    log_info "Starting Claude session for: $CONVERSANT_NAME"
+    
+    # Prepare system prompt
+    local system_prompt
+    system_prompt=$(prepare_system_prompt)
+    
+    # Record session start
+    record_conversant_event "session_started" "persona: $PERSONA"
+    
+    # For now, create a simple mock implementation
+    # TODO: Integrate with actual Claude CLI once full integration is ready
+    log_info "Mock Claude session - would inject persona and handle conversation"
+    log_info "System prompt length: ${#system_prompt} characters"
+    
+    # Simulate Claude processing
+    local mock_response="Hello, I'm $CONVERSANT_NAME. I'm ready to participate in this dialogue about the conversation topic."
+    
+    if [[ -n "$CONVERSATION_CONTEXT" ]]; then
+        mock_response="$mock_response I understand the current context: $CONVERSATION_CONTEXT"
+    fi
+    
+    # Record the mock response
+    record_conversant_event "response_generated" "$mock_response"
+    log_info "Mock response generated: ${#mock_response} characters"
+    
+    # For testing purposes, create a simple interaction loop
+    # This will be replaced with actual Claude CLI integration
+    echo "Mock Claude session for $CONVERSANT_NAME"
+    echo "Persona: $PERSONA"
+    echo "Context: $CONVERSATION_CONTEXT"
+    echo "Response: $mock_response"
+    
+    # Simulate some processing time
+    sleep 1
+    
+    log_info "Claude session completed for: $CONVERSANT_NAME"
+    record_conversant_event "session_completed" "response_length: ${#mock_response}"
+}
+
+# Signal handling
+handle_shutdown() {
+    log_info "Received shutdown signal, cleaning up Claude session"
+    record_conversant_event "session_interrupted" "shutdown_signal_received"
+    exit 0
+}
+
+# Set up signal handlers
+trap handle_shutdown TERM INT
+
+# Main execution
+main() {
+    # Parse command line arguments
+    parse_arguments "$@"
+    
+    # Setup environment and logging
+    setup_claude_environment
+    
+    # Load conversant configuration
+    load_conversant_config
+    
+    # Run the Claude session
+    run_claude_session
+    
+    log_info "Claude instance completed successfully"
+}
+
+# Execute main function
+main "$@"

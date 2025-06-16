@@ -165,7 +165,7 @@ EOF
     for conversant in "${CONVERSANTS[@]}"; do
         cat >> "$config_file" << EOF
 [program:claude-$conversant]
-command=claude --conversation-dir $conversation_dir/conversants/$conversant
+command=$KS_ROOT/tools/logex/claude-instance --conversant $conversant --conversation-dir $conversation_dir
 directory=$conversation_dir
 autostart=false
 autorestart=false

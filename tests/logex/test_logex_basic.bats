@@ -133,3 +133,56 @@ teardown() {
     [ -L "structure-test/tools" ]
     [ -d "structure-test/tools/logex" ]
 }
+
+@test "claude-instance wrapper works correctly" {
+    "$KS_CMD" configure --template simple --output claude-test
+    
+    # Test claude-instance with alice
+    run "$KS_ROOT/tools/logex/claude-instance" --conversant alice --conversation-dir claude-test --context "test context"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Mock Claude session for alice" ]]
+    
+    # Verify log files were created
+    [ -f "claude-test/conversants/alice.log" ]
+    [ -f "claude-test/conversants/alice.jsonl" ]
+    
+    # Verify JSONL content
+    run grep "session_started" claude-test/conversants/alice.jsonl
+    [ "$status" -eq 0 ]
+    
+    run grep "response_generated" claude-test/conversants/alice.jsonl
+    [ "$status" -eq 0 ]
+}
+
+@test "orchestrate-worker runs complete conversation" {
+    "$KS_CMD" configure --template simple --output worker-test
+    "$KS_CMD" orchestrate worker-test
+    
+    # Run orchestrate-worker for a short conversation
+    # First, create a config with shorter turn limits for faster testing
+    sed -i '' 's/max_turns_per_conversant: 5/max_turns_per_conversant: 2/' worker-test/logex-config.yaml
+    sed -i '' 's/max_total_turns: 10/max_total_turns: 4/' worker-test/logex-config.yaml
+    
+    # Run the worker
+    run timeout 30 "$KS_ROOT/tools/logex/orchestrate-worker" worker-test
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Conversation orchestration completed" ]]
+    
+    # Verify conversation logs were created
+    [ -f "worker-test/knowledge/conversation.jsonl" ]
+    [ -f "worker-test/supervise/orchestrator.log" ]
+    
+    # Verify conversation events
+    run grep "conversation_started" worker-test/knowledge/conversation.jsonl
+    [ "$status" -eq 0 ]
+    
+    run grep "conversation_ended" worker-test/knowledge/conversation.jsonl
+    [ "$status" -eq 0 ]
+    
+    # Verify both conversants participated
+    run grep "alice" worker-test/knowledge/conversation.jsonl
+    [ "$status" -eq 0 ]
+    
+    run grep "bob" worker-test/knowledge/conversation.jsonl
+    [ "$status" -eq 0 ]
+}

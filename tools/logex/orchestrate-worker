@@ -1,0 +1,376 @@
+#!/usr/bin/env bash
+# Core conversation conductor process for logex dialogues
+# Runs under supervisord supervision to coordinate multi-party conversations
+
+set -euo pipefail
+
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+
+# Global configuration variables
+declare -g CONVERSATION_DIR=""
+declare -g CONFIG_FILE=""
+declare -g CONVERSATION_TOPIC=""
+declare -g MAX_TURNS=""
+declare -g MAX_TOTAL_TURNS=""
+declare -g TURN_DELAY=""
+declare -g STARTER=""
+declare -g INITIAL_PROMPT=""
+declare -ga CONVERSANTS=()
+declare -gA CONVERSANT_PERSONAS=()
+declare -ga EXIT_KEYWORDS=()
+
+# State tracking
+declare -g CURRENT_TURN=0
+declare -g TOTAL_TURNS=0
+declare -g CURRENT_SPEAKER=""
+declare -g CONVERSATION_ACTIVE=true
+declare -g WORKER_PID=$$
+
+# Logging functions
+log_event() {
+    local level="$1"
+    local message="$2"
+    local timestamp
+    timestamp=$(ks_timestamp)
+    
+    echo "[$timestamp] [$level] [PID:$WORKER_PID] $message" >> "$CONVERSATION_DIR/supervise/orchestrator.log"
+    
+    # Also echo to stdout for supervisord capture
+    echo "[$level] $message"
+}
+
+log_info() {
+    log_event "INFO" "$1"
+}
+
+log_error() {
+    log_event "ERROR" "$1"
+}
+
+log_debug() {
+    log_event "DEBUG" "$1"
+}
+
+# Configuration loading
+load_configuration() {
+    local config_file="$1"
+    
+    log_info "Loading configuration from: $config_file"
+    
+    if [[ ! -f "$config_file" ]]; then
+        log_error "Configuration file not found: $config_file"
+        exit 1
+    fi
+    
+    # Parse YAML configuration using simple sed/grep approach
+    CONVERSATION_TOPIC=$(grep "topic:" "$config_file" | sed 's/.*topic: *"\([^"]*\)".*/\1/')
+    MAX_TURNS=$(grep "max_turns_per_conversant:" "$config_file" | sed 's/.*: *//')
+    MAX_TOTAL_TURNS=$(grep "max_total_turns:" "$config_file" | sed 's/.*: *//')
+    TURN_DELAY=$(grep "turn_delay_seconds:" "$config_file" | sed 's/.*: *//')
+    STARTER=$(grep "starter:" "$config_file" | sed 's/.*starter: *"\([^"]*\)".*/\1/')
+    INITIAL_PROMPT=$(grep "initial_prompt:" "$config_file" | sed 's/.*initial_prompt: *"\([^"]*\)".*/\1/')
+    
+    # Extract conversant names
+    CONVERSANTS=($(sed -n '/^conversants:/,/^[a-zA-Z]/p' "$config_file" | grep "^  [a-zA-Z]" | sed 's/^ *\([^:]*\):.*/\1/'))
+    
+    # Extract personas for each conversant
+    for conversant in "${CONVERSANTS[@]}"; do
+        local persona
+        persona=$(grep -A 3 "^  $conversant:" "$config_file" | grep "persona:" | sed 's/.*persona: *"\([^"]*\)".*/\1/')
+        CONVERSANT_PERSONAS["$conversant"]="$persona"
+    done
+    
+    # Extract exit keywords
+    local keywords_line
+    keywords_line=$(grep "keywords:" "$config_file" | sed 's/.*keywords: *\[\([^]]*\)\].*/\1/')
+    if [[ -n "$keywords_line" ]]; then
+        IFS=',' read -ra keyword_array <<< "$keywords_line"
+        for keyword in "${keyword_array[@]}"; do
+            # Remove quotes and whitespace
+            keyword=$(echo "$keyword" | sed 's/[", ]//g')
+            EXIT_KEYWORDS+=("$keyword")
+        done
+    fi
+    
+    log_info "Configuration loaded: ${#CONVERSANTS[@]} conversants, max_turns=$MAX_TURNS, max_total=$MAX_TOTAL_TURNS"
+    log_debug "Conversants: ${CONVERSANTS[*]}"
+    log_debug "Exit keywords: ${EXIT_KEYWORDS[*]}"
+}
+
+# Conversation state management
+initialize_conversation() {
+    log_info "Initializing conversation: $CONVERSATION_TOPIC"
+    
+    # Create conversant-specific directories
+    for conversant in "${CONVERSANTS[@]}"; do
+        mkdir -p "$CONVERSATION_DIR/conversants/$conversant"
+        
+        # Initialize empty log files
+        touch "$CONVERSATION_DIR/conversants/$conversant.jsonl"
+        touch "$CONVERSATION_DIR/conversants/$conversant.log"
+    done
+    
+    # Set starting speaker
+    CURRENT_SPEAKER="$STARTER"
+    
+    # Record conversation start event
+    record_conversation_event "conversation_started" "topic: $CONVERSATION_TOPIC, starter: $STARTER"
+    
+    log_info "Conversation initialized, starting with: $CURRENT_SPEAKER"
+}
+
+record_conversation_event() {
+    local event_type="$1"
+    local details="$2"
+    local timestamp
+    timestamp=$(ks_timestamp)
+    
+    # Record to main knowledge log
+    local event_json="{\"timestamp\":\"$timestamp\",\"type\":\"$event_type\",\"details\":\"$details\",\"turn\":$TOTAL_TURNS,\"speaker\":\"$CURRENT_SPEAKER\"}"
+    echo "$event_json" >> "$CONVERSATION_DIR/knowledge/conversation.jsonl"
+    
+    log_debug "Event recorded: $event_type - $details"
+}
+
+# Turn management
+get_next_speaker() {
+    # Simple round-robin implementation
+    local current_index=-1
+    
+    # Find current speaker's index
+    for i in "${!CONVERSANTS[@]}"; do
+        if [[ "${CONVERSANTS[$i]}" == "$CURRENT_SPEAKER" ]]; then
+            current_index=$i
+            break
+        fi
+    done
+    
+    # Get next speaker (wrap around)
+    local next_index=$(( (current_index + 1) % ${#CONVERSANTS[@]} ))
+    echo "${CONVERSANTS[$next_index]}"
+}
+
+prepare_turn_context() {
+    local current_speaker="$1"
+    
+    # For now, simple context preparation
+    # Future enhancement: inject previous utterances, conversation summary, etc.
+    
+    local context=""
+    if [[ $TOTAL_TURNS -eq 0 ]]; then
+        context="$INITIAL_PROMPT"
+    else
+        # Get last utterance for context
+        local last_speaker
+        last_speaker=$(get_last_speaker)
+        context="Continuing conversation. Previous speaker was $last_speaker."
+    fi
+    
+    echo "$context"
+}
+
+get_last_speaker() {
+    # Get the previous speaker in round-robin
+    local current_index=-1
+    
+    for i in "${!CONVERSANTS[@]}"; do
+        if [[ "${CONVERSANTS[$i]}" == "$CURRENT_SPEAKER" ]]; then
+            current_index=$i
+            break
+        fi
+    done
+    
+    local prev_index=$(( (current_index - 1 + ${#CONVERSANTS[@]}) % ${#CONVERSANTS[@]} ))
+    echo "${CONVERSANTS[$prev_index]}"
+}
+
+# Exit condition checking
+check_exit_conditions() {
+    # Check turn limits
+    if [[ -n "$MAX_TOTAL_TURNS" && $TOTAL_TURNS -ge $MAX_TOTAL_TURNS ]]; then
+        log_info "Exit condition met: maximum total turns reached ($TOTAL_TURNS >= $MAX_TOTAL_TURNS)"
+        return 0
+    fi
+    
+    # Check per-conversant turn limits
+    if [[ -n "$MAX_TURNS" && $CURRENT_TURN -ge $MAX_TURNS ]]; then
+        log_info "Exit condition met: maximum turns per conversant reached ($CURRENT_TURN >= $MAX_TURNS)"
+        return 0
+    fi
+    
+    # Check for exit keywords in recent outputs
+    # TODO: Implement keyword detection in conversant outputs
+    
+    # Check for manual stop signal
+    if [[ -f "$CONVERSATION_DIR/supervise/stop_signal" ]]; then
+        log_info "Exit condition met: manual stop signal detected"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Process management
+start_conversant_process() {
+    local conversant="$1"
+    local persona="${CONVERSANT_PERSONAS[$conversant]}"
+    local turn_context="$2"
+    
+    log_info "Starting Claude process for conversant: $conversant"
+    
+    # For Phase 2, run claude-instance directly instead of via supervisord
+    # This allows testing without complex supervisord setup
+    local claude_cmd="$KS_ROOT/tools/logex/claude-instance"
+    local claude_args="--conversant $conversant --conversation-dir $CONVERSATION_DIR"
+    
+    # Add context if provided
+    if [[ -n "$turn_context" ]]; then
+        claude_args="$claude_args --context $(printf '%q' "$turn_context")"
+    fi
+    
+    # Run claude-instance and capture its success/failure
+    if eval "$claude_cmd $claude_args"; then
+        log_info "Claude process completed successfully for: $conversant"
+        return 0
+    else
+        log_error "Failed to run Claude process for $conversant"
+        return 1
+    fi
+}
+
+stop_conversant_process() {
+    local conversant="$1"
+    
+    log_info "Claude process management for conversant: $conversant"
+    
+    # For Phase 2 direct execution, no explicit stop needed
+    # The claude-instance process completes automatically
+    
+    log_info "Claude process handling completed for: $conversant"
+}
+
+# Main conversation loop
+run_conversation() {
+    log_info "Starting conversation orchestration"
+    
+    # Initialize conversation state
+    initialize_conversation
+    
+    # Main conversation loop
+    while [[ "$CONVERSATION_ACTIVE" == "true" ]]; do
+        log_info "Turn $TOTAL_TURNS: Speaker = $CURRENT_SPEAKER"
+        
+        # Prepare context for this turn
+        local turn_context
+        turn_context=$(prepare_turn_context "$CURRENT_SPEAKER")
+        
+        # Start current speaker's process with context
+        start_conversant_process "$CURRENT_SPEAKER" "$turn_context"
+        
+        # Wait for the Claude process to complete
+        # For now, simulate a turn with a delay
+        log_info "Running turn for $CURRENT_SPEAKER (context: $turn_context)"
+        
+        # Record turn event
+        record_conversation_event "turn_started" "speaker: $CURRENT_SPEAKER, context: $turn_context"
+        
+        # Turn delay
+        if [[ -n "$TURN_DELAY" && "$TURN_DELAY" -gt 0 ]]; then
+            log_debug "Turn delay: ${TURN_DELAY}s"
+            sleep "$TURN_DELAY"
+        fi
+        
+        # Simulate processing time
+        sleep 2
+        
+        # Stop current speaker's process
+        stop_conversant_process "$CURRENT_SPEAKER"
+        
+        # Record turn completion
+        record_conversation_event "turn_completed" "speaker: $CURRENT_SPEAKER"
+        
+        # Update turn counters
+        TOTAL_TURNS=$((TOTAL_TURNS + 1))
+        CURRENT_TURN=$((CURRENT_TURN + 1))
+        
+        # Check exit conditions
+        if check_exit_conditions; then
+            CONVERSATION_ACTIVE=false
+            break
+        fi
+        
+        # Advance to next speaker
+        CURRENT_SPEAKER=$(get_next_speaker)
+        
+        # Reset per-speaker turn counter when cycling through all speakers
+        if [[ "$CURRENT_SPEAKER" == "$STARTER" && $TOTAL_TURNS -gt 0 ]]; then
+            CURRENT_TURN=0
+        fi
+    done
+    
+    log_info "Conversation orchestration completed after $TOTAL_TURNS total turns"
+}
+
+# Cleanup and shutdown
+cleanup_conversation() {
+    log_info "Cleaning up conversation resources"
+    
+    # Stop all conversant processes
+    for conversant in "${CONVERSANTS[@]}"; do
+        stop_conversant_process "$conversant" || true
+    done
+    
+    # Record conversation end
+    record_conversation_event "conversation_ended" "total_turns: $TOTAL_TURNS"
+    
+    log_info "Conversation cleanup completed"
+}
+
+# Signal handlers
+handle_shutdown() {
+    log_info "Received shutdown signal, initiating graceful shutdown"
+    CONVERSATION_ACTIVE=false
+    cleanup_conversation
+    exit 0
+}
+
+# Set up signal handlers
+trap handle_shutdown TERM INT
+
+# Main execution
+main() {
+    # Validate arguments
+    if [[ $# -ne 1 ]]; then
+        echo "Usage: $0 CONVERSATION_DIR" >&2
+        exit 1
+    fi
+    
+    CONVERSATION_DIR="$1"
+    CONFIG_FILE="$CONVERSATION_DIR/logex-config.yaml"
+    
+    # Validate conversation directory
+    if ! ks_validate_conversation_dir "$CONVERSATION_DIR"; then
+        log_error "Invalid conversation directory: $CONVERSATION_DIR"
+        exit 1
+    fi
+    
+    # Start orchestration log
+    log_info "Orchestrate worker starting for conversation: $CONVERSATION_DIR"
+    log_info "Worker PID: $WORKER_PID"
+    
+    # Load configuration
+    load_configuration "$CONFIG_FILE"
+    
+    # Run the conversation
+    run_conversation
+    
+    # Clean shutdown
+    cleanup_conversation
+    
+    log_info "Orchestrate worker completed successfully"
+}
+
+# Execute main function
+main "$@"
