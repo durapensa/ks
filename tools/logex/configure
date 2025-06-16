@@ -7,6 +7,7 @@ source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/error.sh"
 source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
 
 # Standardized usage function
 usage() {
@@ -25,41 +26,8 @@ usage() {
         examples
 }
 
-# Build getopt options
-LONG_OPTS="help"
-LONG_OPTS="${LONG_OPTS},verbose"
-LONG_OPTS="${LONG_OPTS},dry-run"
-LONG_OPTS="${LONG_OPTS},force"
-LONG_OPTS="${LONG_OPTS},template:"
-LONG_OPTS="${LONG_OPTS},output:"
-LONG_OPTS="${LONG_OPTS},status"
-
-# Parse options with getopt (dummy -o h required for long options)
-OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
-eval set -- "$OPTS"
-
-# Process options
-while true; do
-    case "$1" in
-        --help) usage; exit 0 ;;
-        --verbose) VERBOSE=true; shift ;;
-        --dry-run) DRY_RUN=true; shift ;;
-        --force) FORCE=true; shift ;;
-        --template) TEMPLATE="$2"; shift 2 ;;
-        --output) OUTPUT="$2"; shift 2 ;;
-        --status) STATUS=true; shift ;;
-        --) shift; break ;;
-        *) ks_exit_error "Internal argument parsing error" ;;
-    esac
-done
-
-# Apply defaults and initialize variables
-VERBOSE="${VERBOSE:-}"
-DRY_RUN="${DRY_RUN:-}"
-FORCE="${FORCE:-}"
-TEMPLATE="${TEMPLATE:-}"
-OUTPUT="${OUTPUT:-}"
-STATUS="${STATUS:-}"
+# Parse arguments using category-based system
+ks_parse_category_args "LOGEX" -- "$@"
 
 # Configuration builder functions
 

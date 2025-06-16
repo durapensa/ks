@@ -186,6 +186,8 @@ ks_parse_category_args() {
             --completed) COMPLETED=true; shift ;;
             --failed) FAILED=true; shift ;;
             --cleanup) CLEANUP=true; shift ;;
+            --template) TEMPLATE="$2"; shift 2 ;;
+            --output) OUTPUT="$2"; shift 2 ;;
             --) shift; break ;;
             *) ks_exit_error "Internal argument parsing error" ;;
         esac
