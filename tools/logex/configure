@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Interactive YAML configuration builder for logex conversations
+
+# configure - Interactive YAML configuration builder for logex conversations
 
 set -euo pipefail
 
+# Source configuration and modular libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/error.sh"

@@ -188,6 +188,10 @@ ks_parse_category_args() {
             --cleanup) CLEANUP=true; shift ;;
             --template) TEMPLATE="$2"; shift 2 ;;
             --output) OUTPUT="$2"; shift 2 ;;
+            --conversant) CONVERSANT="$2"; shift 2 ;;
+            --conversation-dir) CONVERSATION_DIR="$2"; shift 2 ;;
+            --persona) PERSONA="$2"; shift 2 ;;
+            --context) CONTEXT="$2"; shift 2 ;;
             --) shift; break ;;
             *) ks_exit_error "Internal argument parsing error" ;;
         esac

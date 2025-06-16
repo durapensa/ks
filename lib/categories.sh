@@ -58,7 +58,11 @@ dry-run|n|Show what would be done|BOOL
 force|f|Force operation|BOOL
 template|t|Use configuration template|
 output|o|Output file path|
-status|s|Show status|BOOL"
+status|s|Show status|BOOL
+conversant|c|Conversant name|
+conversation-dir||Conversation directory|
+persona|p|Persona/system prompt|
+context||Turn context to inject|"
 
 # UTILS: Specialized tools (per-tool unique options)
 KS_CATEGORY_OPTIONS["UTILS"]=""  # Utilities define their own options

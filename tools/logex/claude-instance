@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Claude CLI wrapper for isolated conversant processes in logex conversations
+
+# claude-instance - Claude CLI wrapper for isolated conversant processes in logex conversations
 # Handles persona injection, context isolation, and response capture
 
 set -euo pipefail
 
+# Source configuration and modular libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
 
 # Configuration variables
 declare -g CONVERSATION_DIR=""
@@ -16,73 +20,45 @@ declare -g CONVERSATION_CONTEXT=""
 declare -g LOG_FILE=""
 declare -g JSONL_FILE=""
 
-# Usage function
+# Standardized usage function
 usage() {
-    cat << EOF
-Usage: $0 --conversant NAME --conversation-dir DIR [options]
-
-Options:
-  --conversant NAME           Name of the conversant (required)
-  --conversation-dir DIR      Conversation directory (required) 
-  --persona TEXT             Persona/system prompt for this conversant
-  --context TEXT             Current turn context to inject
-  --help                     Show this help message
-
-Environment:
-  CLAUDE_MODEL               Claude model to use (default: from KS_MODEL)
-  
-This script creates an isolated Claude CLI session for a specific conversant
-in a logex conversation, handling persona injection and response capture.
-EOF
+    declare -a arguments=(
+        "CONVERSANT_NAME          Name of the conversant (via --conversant)"
+        "CONVERSATION_DIR         Conversation directory (via --conversation-dir)"
+    )
+    declare -a examples=(
+        "claude-instance --conversant alice --conversation-dir ./my-chat"
+        "claude-instance --conversant bob --conversation-dir ./my-chat --persona \"You are helpful\""
+        "claude-instance --conversant alice --conversation-dir ./chat --context \"Previous context\""
+    )
+    ks_generate_usage \
+        "Claude CLI wrapper for isolated conversant processes in logex conversations" \
+        "claude-instance" \
+        "--conversant NAME --conversation-dir DIR [options]" \
+        "LOGEX" \
+        arguments \
+        examples
 }
 
-# Argument parsing
-parse_arguments() {
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --conversant)
-                CONVERSANT_NAME="$2"
-                shift 2
-                ;;
-            --conversation-dir)
-                CONVERSATION_DIR="$2"
-                shift 2
-                ;;
-            --persona)
-                PERSONA="$2"
-                shift 2
-                ;;
-            --context)
-                CONVERSATION_CONTEXT="$2"
-                shift 2
-                ;;
-            --help)
-                usage
-                exit 0
-                ;;
-            *)
-                echo "Error: Unknown argument '$1'" >&2
-                usage >&2
-                exit 1
-                ;;
-        esac
-    done
-    
-    # Validate required arguments
-    if [[ -z "$CONVERSANT_NAME" ]]; then
-        echo "Error: --conversant is required" >&2
-        exit 1
-    fi
-    
-    if [[ -z "$CONVERSATION_DIR" ]]; then
-        echo "Error: --conversation-dir is required" >&2
-        exit 1
-    fi
-    
-    # Set derived paths (absolute paths)
-    LOG_FILE="$(realpath "$CONVERSATION_DIR")/conversants/$CONVERSANT_NAME.log"
-    JSONL_FILE="$(realpath "$CONVERSATION_DIR")/conversants/$CONVERSANT_NAME.jsonl"
-}
+# Parse arguments using category-based system
+ks_parse_category_args "LOGEX" -- "$@"
+
+# Validate required arguments
+if [[ -z "$CONVERSANT" ]]; then
+    ks_exit_usage "--conversant is required"
+fi
+
+if [[ -z "$CONVERSATION_DIR" ]]; then
+    ks_exit_usage "--conversation-dir is required"
+fi
+
+# Set variable aliases for compatibility with existing code
+CONVERSANT_NAME="$CONVERSANT"
+CONVERSATION_CONTEXT="$CONTEXT"
+
+# Set derived paths (absolute paths)
+LOG_FILE="$(realpath "$CONVERSATION_DIR")/conversants/$CONVERSANT_NAME.log"
+JSONL_FILE="$(realpath "$CONVERSATION_DIR")/conversants/$CONVERSANT_NAME.jsonl"
 
 # Load conversant configuration
 load_conversant_config() {
@@ -330,7 +306,6 @@ trap handle_shutdown TERM INT
 # Main execution
 main() {
     # Parse command line arguments
-    parse_arguments "$@"
     
     # Load conversant configuration (needed before setup)
     load_conversant_config

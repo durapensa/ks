@@ -1,12 +1,33 @@
 #!/usr/bin/env bash
-# Core conversation conductor process for logex dialogues
+
+# orchestrate-worker - Core conversation conductor process for logex dialogues
 # Runs under supervisord supervision to coordinate multi-party conversations
 
 set -euo pipefail
 
+# Source configuration and modular libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+
+# Standardized usage function
+usage() {
+    declare -a arguments=(
+        "CONVERSATION_DIR         Conversation directory containing logex-config.yaml"
+    )
+    declare -a examples=(
+        "orchestrate-worker ./my-conversation"
+        "orchestrate-worker /path/to/chat-directory"
+    )
+    ks_generate_usage \
+        "Core conversation conductor process for logex dialogues" \
+        "orchestrate-worker" \
+        "CONVERSATION_DIR" \
+        "UTILS" \
+        arguments \
+        examples
+}
 
 # Global configuration variables
 declare -g CONVERSATION_DIR=""
@@ -398,10 +419,15 @@ trap handle_shutdown TERM INT
 
 # Main execution
 main() {
+    # Handle help option
+    if [[ "${1:-}" == "--help" ]]; then
+        usage
+        exit 0
+    fi
+    
     # Validate arguments
     if [[ $# -ne 1 ]]; then
-        echo "Usage: $0 CONVERSATION_DIR" >&2
-        exit 1
+        ks_exit_usage "CONVERSATION_DIR required"
     fi
     
     CONVERSATION_DIR="$1"

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Process monitoring for logex conversations (supervisord integration)
+
+# supervisor - Process monitoring for logex conversations (supervisord integration)
 
 set -euo pipefail
 
+# Source configuration and modular libraries
 source "${0%/*}/../../.ks-env"
 source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/error.sh"
