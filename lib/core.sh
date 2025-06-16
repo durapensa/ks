@@ -43,5 +43,51 @@ ks_validate_days() {
     return 0
 }
 
+ks_create_conversation_dirs() {
+    # Create conversation directory structure
+    # Usage: ks_create_conversation_dirs "$CONVERSATION_NAME"
+    local conversation_name="$1"
+    
+    if [[ -z "$conversation_name" ]]; then
+        echo "Error: conversation name required" >&2
+        return 1
+    fi
+    
+    # Sanitize conversation name for filesystem
+    local safe_name
+    safe_name=$(ks_sanitize_string "$conversation_name")
+    
+    # Create directory structure
+    mkdir -p "$safe_name"/{knowledge,conversants,supervise}
+    
+    # Create tools symlink back to ks project
+    if [[ -n "${KS_ROOT:-}" && -d "$KS_ROOT/tools" ]]; then
+        ln -sf "$KS_ROOT/tools" "$safe_name/tools"
+    fi
+    
+    echo "$safe_name"
+}
+
+ks_validate_conversation_dir() {
+    # Validate conversation directory exists and has required structure
+    # Usage: ks_validate_conversation_dir "$CONVERSATION_NAME"
+    local conversation_name="$1"
+    
+    if [[ ! -d "$conversation_name" ]]; then
+        echo "Error: conversation directory '$conversation_name' does not exist" >&2
+        return 1
+    fi
+    
+    # Check for required subdirectories
+    for subdir in knowledge conversants supervise; do
+        if [[ ! -d "$conversation_name/$subdir" ]]; then
+            echo "Error: missing required directory '$conversation_name/$subdir'" >&2
+            return 1
+        fi
+    done
+    
+    return 0
+}
+
 # Initialize directories on source
 ks_ensure_dirs

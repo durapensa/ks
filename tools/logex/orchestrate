@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# Headless conversation runner for logex dialogues
+
+set -euo pipefail
+
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+
+# Standardized usage function
+usage() {
+    declare -a arguments=(
+        "CONVERSATION_NAME          Name of conversation directory to orchestrate"
+    )
+    declare -a examples=(
+        "orchestrate test-dialogue         # Run test-dialogue conversation"
+        "orchestrate --dry-run my-convo   # Show what would be executed"
+        "orchestrate --verbose my-convo   # Run with detailed output"
+    )
+    ks_generate_usage \
+        "Headless conversation runner for logex dialogues" \
+        "orchestrate" \
+        "[options] CONVERSATION_NAME" \
+        "LOGEX" \
+        arguments \
+        examples
+}
+
+# Build getopt options
+LONG_OPTS="help"
+LONG_OPTS="${LONG_OPTS},verbose"
+LONG_OPTS="${LONG_OPTS},dry-run"
+LONG_OPTS="${LONG_OPTS},force"
+LONG_OPTS="${LONG_OPTS},template:"
+LONG_OPTS="${LONG_OPTS},output:"
+LONG_OPTS="${LONG_OPTS},status"
+
+# Parse options with getopt (dummy -o h required for long options)
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
+eval set -- "$OPTS"
+
+# Process options
+while true; do
+    case "$1" in
+        --help) usage; exit 0 ;;
+        --verbose) VERBOSE=true; shift ;;
+        --dry-run) DRY_RUN=true; shift ;;
+        --force) FORCE=true; shift ;;
+        --template) TEMPLATE="$2"; shift 2 ;;
+        --output) OUTPUT="$2"; shift 2 ;;
+        --status) STATUS=true; shift ;;
+        --) shift; break ;;
+        *) ks_exit_error "Internal argument parsing error" ;;
+    esac
+done
+
+# Apply defaults and initialize variables
+VERBOSE="${VERBOSE:-}"
+DRY_RUN="${DRY_RUN:-}"
+FORCE="${FORCE:-}"
+TEMPLATE="${TEMPLATE:-}"
+OUTPUT="${OUTPUT:-}"
+STATUS="${STATUS:-}"
+
+# Get conversation name from arguments
+CONVERSATION_NAME="${1:-}"
+if [[ -z "$CONVERSATION_NAME" ]]; then
+    ks_exit_usage "Conversation name required"
+fi
+
+# Orchestration functions
+
+load_config() {
+    local config_file="$1"
+    
+    if [[ ! -f "$config_file" ]]; then
+        ks_exit_error "Configuration file not found: $config_file"
+    fi
+    
+    # Basic YAML parsing for our structured config
+    # This is a simple approach - could be enhanced with proper YAML parser
+    CONVERSATION_TOPIC=$(grep "topic:" "$config_file" | sed 's/.*topic: *"\([^"]*\)".*/\1/')
+    MAX_TURNS=$(grep "max_turns_per_conversant:" "$config_file" | sed 's/.*: *//')
+    TURN_DELAY=$(grep "turn_delay_seconds:" "$config_file" | sed 's/.*: *//')
+    STARTER=$(grep "starter:" "$config_file" | sed 's/.*starter: *"\([^"]*\)".*/\1/')
+    INITIAL_PROMPT=$(grep "initial_prompt:" "$config_file" | sed 's/.*initial_prompt: *"\([^"]*\)".*/\1/')
+    
+    # Extract conversant names (stop at next top-level section)
+    CONVERSANTS=($(sed -n '/^conversants:/,/^[a-zA-Z]/p' "$config_file" | grep "^  [a-zA-Z]" | sed 's/^ *\([^:]*\):.*/\1/'))
+    
+    if [[ ${#CONVERSANTS[@]} -eq 0 ]]; then
+        ks_exit_error "No conversants found in configuration"
+    fi
+    
+    # Extract personas for each conversant
+    declare -gA CONVERSANT_PERSONAS
+    for conversant in "${CONVERSANTS[@]}"; do
+        local persona
+        persona=$(grep -A 3 "^  $conversant:" "$config_file" | grep "persona:" | sed 's/.*persona: *"\([^"]*\)".*/\1/')
+        CONVERSANT_PERSONAS["$conversant"]="$persona"
+    done
+}
+
+validate_setup() {
+    local conversation_dir="$1"
+    
+    # Validate conversation directory structure
+    ks_validate_conversation_dir "$conversation_dir"
+    
+    # Check for configuration file
+    local config_file="$conversation_dir/logex-config.yaml"
+    if [[ ! -f "$config_file" ]]; then
+        ks_exit_error "Logex configuration not found: $config_file"
+    fi
+    
+    # Check if supervisord is available
+    if ! command -v supervisord >/dev/null 2>&1; then
+        ks_exit_error "supervisord not found. Please install supervisor package."
+    fi
+    
+    # Check if claude command is available
+    if ! command -v claude >/dev/null 2>&1; then
+        ks_exit_error "Claude CLI not found. Please install claude."
+    fi
+}
+
+create_supervisord_config() {
+    local conversation_dir="$1"
+    local config_file="$conversation_dir/supervise/supervisord.conf"
+    
+    # Create supervisord configuration
+    cat > "$config_file" << EOF
+[supervisord]
+logfile=$conversation_dir/supervise/supervisord.log
+pidfile=$conversation_dir/supervise/supervisord.pid
+childlogdir=$conversation_dir/supervise
+nodaemon=false
+silent=true
+
+[supervisorctl]
+serverurl=unix://$conversation_dir/supervise/supervisor.sock
+
+[unix_http_server]
+file=$conversation_dir/supervise/supervisor.sock
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+EOF
+
+    # Add orchestrator program
+    cat >> "$config_file" << EOF
+[program:orchestrator]
+command=$KS_ROOT/tools/logex/orchestrate-worker $conversation_dir
+directory=$conversation_dir
+autostart=true
+autorestart=false
+stdout_logfile=$conversation_dir/supervise/orchestrator.log
+stderr_logfile=$conversation_dir/supervise/orchestrator.log
+
+EOF
+
+    # Add programs for each conversant
+    for conversant in "${CONVERSANTS[@]}"; do
+        cat >> "$config_file" << EOF
+[program:claude-$conversant]
+command=claude --conversation-dir $conversation_dir/conversants/$conversant
+directory=$conversation_dir
+autostart=false
+autorestart=false
+stdout_logfile=$conversation_dir/conversants/$conversant.log
+stderr_logfile=$conversation_dir/conversants/$conversant.log
+
+EOF
+    done
+    
+    echo "$config_file"
+}
+
+# Main execution
+main() {
+    if [[ -n "$STATUS" ]]; then
+        echo "Orchestrator status: operational"
+        # TODO: Check for running conversations
+        exit 0
+    fi
+    
+    # Validate conversation directory and setup
+    validate_setup "$CONVERSATION_NAME"
+    
+    # Load configuration
+    local config_file="$CONVERSATION_NAME/logex-config.yaml"
+    load_config "$config_file"
+    
+    if [[ -n "$VERBOSE" ]]; then
+        echo "Conversation: $CONVERSATION_TOPIC"
+        echo "Conversants: ${CONVERSANTS[*]}"
+        echo "Max turns: $MAX_TURNS"
+        echo "Starter: $STARTER"
+    fi
+    
+    if [[ -n "$DRY_RUN" ]]; then
+        echo "Would orchestrate conversation: $CONVERSATION_NAME"
+        echo "Would create supervisord config for ${#CONVERSANTS[@]} conversants"
+        echo "Would start conversation with: $INITIAL_PROMPT"
+        exit 0
+    fi
+    
+    # Create supervisord configuration
+    local supervisor_config
+    supervisor_config=$(create_supervisord_config "$CONVERSATION_NAME")
+    
+    if [[ -n "$VERBOSE" ]]; then
+        echo "Created supervisord config: $supervisor_config"
+    fi
+    
+    echo "Conversation orchestration prepared for: $CONVERSATION_NAME"
+    echo "To implement full orchestration, we need to create the worker process..."
+    echo "This is the foundation - worker implementation is next phase."
+}
+
+main "$@"

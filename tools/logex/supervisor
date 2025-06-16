@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+# Process monitoring for logex conversations (supervisord integration)
+
+set -euo pipefail
+
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+
+# Standardized usage function
+usage() {
+    declare -a arguments=(
+        "COMMAND                    Command: list, status, start, stop, restart"
+        "[CONVERSATION_NAME]        Optional conversation name (for specific operations)"
+    )
+    declare -a examples=(
+        "supervisor list                    # List all logex conversations"
+        "supervisor status test-dialogue   # Check status of specific conversation"
+        "supervisor start test-dialogue    # Start conversation"
+        "supervisor stop test-dialogue     # Stop conversation"
+    )
+    ks_generate_usage \
+        "Process monitoring for logex conversations (supervisord integration)" \
+        "supervisor" \
+        "[options] COMMAND [CONVERSATION_NAME]" \
+        "LOGEX" \
+        arguments \
+        examples
+}
+
+# Build getopt options
+LONG_OPTS="help"
+LONG_OPTS="${LONG_OPTS},verbose"
+LONG_OPTS="${LONG_OPTS},dry-run"
+LONG_OPTS="${LONG_OPTS},force"
+LONG_OPTS="${LONG_OPTS},template:"
+LONG_OPTS="${LONG_OPTS},output:"
+LONG_OPTS="${LONG_OPTS},status"
+
+# Parse options with getopt (dummy -o h required for long options)
+OPTS=$($KS_GETOPT -o h -l "$LONG_OPTS" -- "$@") || ks_exit_usage "Invalid options provided"
+eval set -- "$OPTS"
+
+# Process options
+while true; do
+    case "$1" in
+        --help) usage; exit 0 ;;
+        --verbose) VERBOSE=true; shift ;;
+        --dry-run) DRY_RUN=true; shift ;;
+        --force) FORCE=true; shift ;;
+        --template) TEMPLATE="$2"; shift 2 ;;
+        --output) OUTPUT="$2"; shift 2 ;;
+        --status) STATUS=true; shift ;;
+        --) shift; break ;;
+        *) ks_exit_error "Internal argument parsing error" ;;
+    esac
+done
+
+# Apply defaults and initialize variables
+VERBOSE="${VERBOSE:-}"
+DRY_RUN="${DRY_RUN:-}"
+FORCE="${FORCE:-}"
+TEMPLATE="${TEMPLATE:-}"
+OUTPUT="${OUTPUT:-}"
+STATUS="${STATUS:-}"
+
+# Get command and optional conversation name
+COMMAND="${1:-}"
+CONVERSATION_NAME="${2:-}"
+
+if [[ -z "$COMMAND" ]]; then
+    ks_exit_usage "Command required: list, status, start, stop, restart"
+fi
+
+# Supervisor functions
+
+find_conversations() {
+    # Find all directories with logex-config.yaml
+    find . -maxdepth 2 -name "logex-config.yaml" 2>/dev/null | sed 's|/logex-config.yaml||' | sed 's|^\./||' || true
+}
+
+list_conversations() {
+    local conversations
+    conversations=$(find_conversations)
+    
+    if [[ -z "$conversations" ]]; then
+        echo "No logex conversations found in current directory"
+        return 0
+    fi
+    
+    echo "Logex conversations:"
+    echo "==================="
+    echo
+    
+    while IFS= read -r conversation; do
+        if [[ -z "$conversation" ]]; then continue; fi
+        
+        echo "Conversation: $conversation"
+        
+        # Check if supervisord is running for this conversation
+        local supervisor_sock="$conversation/supervise/supervisor.sock"
+        local status="stopped"
+        
+        if [[ -S "$supervisor_sock" ]]; then
+            if supervisorctl -s "unix://$supervisor_sock" status >/dev/null 2>&1; then
+                status="running"
+            fi
+        fi
+        
+        echo "  Status: $status"
+        
+        # Show basic config info
+        if [[ -f "$conversation/logex-config.yaml" ]]; then
+            local topic
+            topic=$(grep "topic:" "$conversation/logex-config.yaml" | sed 's/.*topic: *"\([^"]*\)".*/\1/' 2>/dev/null || echo "unknown")
+            echo "  Topic: $topic"
+        fi
+        
+        echo
+    done <<< "$conversations"
+}
+
+show_conversation_status() {
+    local conversation="$1"
+    
+    if [[ ! -d "$conversation" ]]; then
+        ks_exit_error "Conversation directory not found: $conversation"
+    fi
+    
+    if [[ ! -f "$conversation/logex-config.yaml" ]]; then
+        ks_exit_error "Not a logex conversation: $conversation"
+    fi
+    
+    echo "Conversation Status: $conversation"
+    echo "=================================="
+    echo
+    
+    # Show supervisor status
+    local supervisor_sock="$conversation/supervise/supervisor.sock"
+    
+    if [[ ! -S "$supervisor_sock" ]]; then
+        echo "Supervisord: Not running"
+        echo "Socket: $supervisor_sock (not found)"
+        return 0
+    fi
+    
+    echo "Supervisord: Running"
+    echo "Socket: $supervisor_sock"
+    echo
+    
+    # Show process status
+    echo "Process Status:"
+    echo "---------------"
+    supervisorctl -s "unix://$supervisor_sock" status 2>/dev/null || {
+        echo "Failed to connect to supervisord"
+        return 1
+    }
+    
+    echo
+    
+    # Show recent logs if verbose
+    if [[ -n "$VERBOSE" ]]; then
+        echo "Recent Activity:"
+        echo "----------------"
+        
+        local orchestrator_log="$conversation/supervise/orchestrator.log"
+        if [[ -f "$orchestrator_log" ]]; then
+            echo "Orchestrator (last 5 lines):"
+            tail -5 "$orchestrator_log" 2>/dev/null | sed 's/^/  /' || echo "  No log entries"
+        fi
+        
+        # Show conversant logs
+        for log_file in "$conversation/conversants"/*.log; do
+            if [[ -f "$log_file" ]]; then
+                local conversant
+                conversant=$(basename "$log_file" .log)
+                echo "$conversant (last 3 lines):"
+                tail -3 "$log_file" 2>/dev/null | sed 's/^/  /' || echo "  No log entries"
+            fi
+        done
+    fi
+}
+
+start_conversation() {
+    local conversation="$1"
+    
+    if [[ ! -d "$conversation" ]]; then
+        ks_exit_error "Conversation directory not found: $conversation"
+    fi
+    
+    if [[ ! -f "$conversation/supervise/supervisord.conf" ]]; then
+        ks_exit_error "Supervisord configuration not found. Run 'orchestrate' first."
+    fi
+    
+    local supervisor_sock="$conversation/supervise/supervisor.sock"
+    
+    # Check if already running
+    if [[ -S "$supervisor_sock" ]] && supervisorctl -s "unix://$supervisor_sock" status >/dev/null 2>&1; then
+        echo "Conversation already running: $conversation"
+        return 0
+    fi
+    
+    if [[ -n "$DRY_RUN" ]]; then
+        echo "Would start supervisord for: $conversation"
+        return 0
+    fi
+    
+    echo "Starting conversation: $conversation"
+    
+    # Start supervisord
+    cd "$conversation"
+    supervisord -c supervise/supervisord.conf
+    
+    echo "Supervisord started for: $conversation"
+    echo "Use 'supervisor status $conversation' to monitor"
+}
+
+stop_conversation() {
+    local conversation="$1"
+    
+    if [[ ! -d "$conversation" ]]; then
+        ks_exit_error "Conversation directory not found: $conversation"
+    fi
+    
+    local supervisor_sock="$conversation/supervise/supervisor.sock"
+    
+    if [[ ! -S "$supervisor_sock" ]]; then
+        echo "Conversation not running: $conversation"
+        return 0
+    fi
+    
+    if [[ -n "$DRY_RUN" ]]; then
+        echo "Would stop supervisord for: $conversation"
+        return 0
+    fi
+    
+    echo "Stopping conversation: $conversation"
+    
+    # Stop all processes and shutdown supervisord
+    supervisorctl -s "unix://$supervisor_sock" shutdown 2>/dev/null || {
+        echo "Warning: Failed to gracefully shutdown supervisord"
+    }
+    
+    echo "Conversation stopped: $conversation"
+}
+
+# Main execution
+main() {
+    case "$COMMAND" in
+        "list"|"ls")
+            list_conversations
+            ;;
+        "status"|"stat")
+            if [[ -z "$CONVERSATION_NAME" ]]; then
+                list_conversations
+            else
+                show_conversation_status "$CONVERSATION_NAME"
+            fi
+            ;;
+        "start")
+            if [[ -z "$CONVERSATION_NAME" ]]; then
+                ks_exit_usage "Conversation name required for start command"
+            fi
+            start_conversation "$CONVERSATION_NAME"
+            ;;
+        "stop")
+            if [[ -z "$CONVERSATION_NAME" ]]; then
+                ks_exit_usage "Conversation name required for stop command"
+            fi
+            stop_conversation "$CONVERSATION_NAME"
+            ;;
+        "restart")
+            if [[ -z "$CONVERSATION_NAME" ]]; then
+                ks_exit_usage "Conversation name required for restart command"
+            fi
+            stop_conversation "$CONVERSATION_NAME"
+            sleep 2
+            start_conversation "$CONVERSATION_NAME"
+            ;;
+        *)
+            ks_exit_usage "Unknown command: $COMMAND. Available: list, status, start, stop, restart"
+            ;;
+    esac
+}
+
+main "$@"

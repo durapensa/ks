@@ -1,0 +1,41 @@
+# Multi-event test scenario
+# Tests complex responses that should generate multiple events
+
+conversation:
+  name: "multi-event-test"
+  topic: "knowledge connections and insights"
+  description: "Test scenario for multi-event response validation"
+
+settings:
+  max_turns_per_conversant: 3
+  turn_delay_seconds: 0
+  rate_limit_delay: 1
+
+conversants:
+  researcher:
+    type: "claude"
+    persona: "You are a researcher exploring connections between concepts. Generate insights and ask questions."
+    
+  philosopher:
+    type: "claude"
+    persona: "You are a philosopher connecting ideas to broader themes. Make thought-provoking observations."
+
+dialogue:
+  starter: "researcher"
+  initial_prompt: "How do emergence and complexity relate to artificial intelligence?"
+  
+  turn_taking:
+    strategy: "round_robin"
+    
+exit_conditions:
+  max_total_turns: 6
+  keywords: ["profound insight", "deep connection"]
+  manual_stop: true
+
+# Test expectations for multiple event types
+test_expectations:
+  events_created: 8
+  min_insights: 2
+  min_connections: 1
+  min_questions: 2
+  participants: ["researcher", "philosopher"]

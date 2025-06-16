@@ -1,0 +1,39 @@
+# Basic logex test scenario for automated testing
+# Tests simple 2-turn conversation and event capture
+
+conversation:
+  name: "basic-test"
+  topic: "testing event capture"
+  description: "Basic test for logex system functionality"
+
+settings:
+  max_turns_per_conversant: 2
+  turn_delay_seconds: 0
+  rate_limit_delay: 0
+
+conversants:
+  tester:
+    type: "claude"
+    persona: "You are testing a knowledge system. Give brief responses about testing."
+    
+  validator:
+    type: "claude"
+    persona: "You validate test results. Respond briefly about validation."
+
+dialogue:
+  starter: "tester"
+  initial_prompt: "What should we test in this knowledge system?"
+  
+  turn_taking:
+    strategy: "round_robin"
+    
+exit_conditions:
+  max_total_turns: 4
+  keywords: ["test complete", "validation done"]
+  manual_stop: true
+
+# Test-specific settings
+test_expectations:
+  events_created: 4
+  min_turns: 3
+  participants: ["tester", "validator"]

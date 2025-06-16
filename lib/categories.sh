@@ -51,6 +51,15 @@ confidence-threshold|c|Filter by confidence level|0.5
 show-context||Include source events|BOOL
 auto-approve|a|Auto-approve above threshold|BOOL"
 
+# LOGEX: Dialogue composer tools (automated conversation orchestration)
+# Interactive configuration and process supervision
+KS_CATEGORY_OPTIONS["LOGEX"]="verbose|v|Show detailed output|BOOL
+dry-run|n|Show what would be done|BOOL
+force|f|Force operation|BOOL
+template|t|Use configuration template|
+output|o|Output file path|
+status|s|Show status|BOOL"
+
 # UTILS: Specialized tools (per-tool unique options)
 KS_CATEGORY_OPTIONS["UTILS"]=""  # Utilities define their own options
 
