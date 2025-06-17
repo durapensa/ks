@@ -1,242 +1,278 @@
-# Personal Knowledge System
+# ks: Personal Knowledge System
 
-An event-sourced knowledge system for capturing thoughts, connections, and insights through natural conversation.
+An event-sourced knowledge management system that captures thoughts, insights, and connections through natural conversation and transforms them into searchable, structured knowledge using AI analysis and human curation.
 
-## Architecture
+## Features
 
-- **Local-first**: All data stored on filesystem
-- **Event-sourced**: Append-only event log as source of truth
-- **Terminal-friendly**: Composable CLI tools
-- **LLM-native**: Designed for conversational interaction
+- **Event-Sourced Architecture**: Append-only knowledge capture with complete provenance
+- **Conversational Interface**: Natural interaction via Claude AI for knowledge capture
+- **Automated Analysis**: Background AI processing extracts themes, connections, and patterns
+- **Human-in-the-Loop Curation**: Review and approve AI insights before integration
+- **Knowledge Graph**: SQLite-based distilled knowledge with concept relationships
+- **Real-Time Dashboard**: Live monitoring of capture activity and analysis status
+- **Conversation Harness**: Automated AI-to-AI dialogues for knowledge experiments
+- **Local-First**: All data stored on your filesystem, no cloud dependencies
 
-## Setup
+## Quick Start
+
+### Installation
 
 ```bash
-# Option 1: Update shell config only
+git clone https://github.com/durapensa/ks.git
+cd ks
 ./setup.sh
-source ~/.zshrc  # or ~/.bashrc / ~/.bash_profile
-
-# Option 2: Update shell config AND activate immediately
-source setup.sh
+source ~/.zshrc  # or your shell config file
 ```
+
+The setup script will check for dependencies and offer to install missing ones via your package manager.
+
+### Basic Usage
+
+**Recommended Setup**: Use two side-by-side terminals for the optimal experience:
+
+```bash
+# Terminal 1: Interactive knowledge capture
+ks
+
+# Terminal 2: Real-time dashboard (optional)
+ksd
+```
+
+This setup provides live monitoring of your knowledge system activity while you capture thoughts and insights through natural conversation.
+
+**Screenshots and visual examples coming soon.**
+
+### Core Workflow
+
+1. **Capture Knowledge**: Use `ks` to enter conversational mode with Claude
+2. **Automatic Processing**: Background analysis extracts insights when event thresholds are reached
+3. **Review Findings**: Approve or reject AI-generated insights via the dashboard or review tools
+4. **Query Knowledge**: Search and explore your accumulated knowledge using various tools
+
+### Example Usage
+
+```bash
+# Start interactive knowledge session
+ks
+
+# During conversation, Claude automatically captures events like:
+# - New thoughts and observations
+# - Connections between concepts  
+# - Questions for future exploration
+# - Synthesized insights
+
+# Search your knowledge
+ks query "memory systems"
+ks query --type thought --days 30
+
+# Direct event capture (alternative to conversation)
+ks events thought "distributed-systems" "CAP theorem creates interesting trade-offs"
+
+# View system status
+ksd --status
+
+# Review pending AI analysis
+ks review-findings
+```
+
+## System Requirements
+
+- **Operating System**: macOS or Linux
+- **Shell**: bash 5.x+ (installed by setup.sh if needed)
+- **Claude CLI**: Required for AI interactions ([installation guide](https://claude.ai/cli))
 
 ### Dependencies
 
-- `bash` 5.x+ - Modern bash features for performance and safety (required)
-- `jq` - JSON processing (required)
-- `claude` - Claude CLI (required) 
-- `gum` - Beautiful TUI components for dashboard (required for ksd)
-- `python3` - For JSONL migration utilities (typically pre-installed)
-- GNU coreutils - For consistent date/stat behavior across platforms
+**Core Requirements** (checked/installed by setup.sh):
+- `jq` - JSON processing
+- `claude` - Claude AI CLI
+- `python3` - For utilities (typically pre-installed)
+- GNU coreutils, findutils, util-linux - Cross-platform compatibility
 
-**Additional Tools (installed by setup.sh):**
-- `util-linux` - Provides getopt and flock for portable argument parsing and file locking
-- `sd` - Modern sed replacement for safer text manipulation
-- `ripgrep` (rg) - Fast, modern grep for searching
-- `pueue` - Process queue management for background tasks
-- `watchexec` - File watcher for automated development workflows
-- `moreutils` - Unix utilities including `sponge` for safe in-place editing
-
-**Installation:**
-- Run `./setup.sh` to check for missing dependencies
-- On macOS with Homebrew, it will show what's missing and offer to install automatically
-- On Linux, it will provide package manager commands for your distribution
-- Configures PATH to prefer GNU tools for consistent cross-platform behavior
+**Additional Tools** (for enhanced functionality):
+- `sd` - Modern text processing 
+- `ripgrep` (rg) - Fast search
+- `parallel` - Concurrent processing
+- `fx` - JSON exploration (integrated with dashboard)
 
 ## Configuration
 
 ```bash
-# Set Claude model for analysis tools (default: sonnet)
-export KS_MODEL=opus    # Use Opus for deeper analysis
-export KS_MODEL=sonnet  # Use Sonnet (default, faster)
+# Set Claude model for analysis (default: sonnet)
+export KS_MODEL=opus    # Deeper analysis
+export KS_MODEL=sonnet  # Faster processing (default)
+
+# Adjust background analysis triggers
+export KS_EVENT_THRESHOLD_THEMES=10      # Theme extraction trigger
+export KS_EVENT_THRESHOLD_CONNECTIONS=20 # Connection analysis trigger
+export KS_EVENT_THRESHOLD_PATTERNS=30    # Pattern recognition trigger
 ```
 
-## Usage
+## Key Capabilities
 
-### Conversation Mode
-```bash
-ks                      # Enter knowledge capture conversation
-ks --continue           # Continue previous conversation
+### Knowledge Capture
+
+- **Interactive Conversations**: Natural dialogue with Claude for thought development
+- **Automatic Event Creation**: Thoughts, insights, and connections captured during conversation
+- **Direct Event Logging**: Command-line tools for quick knowledge entry
+- **Multiple Event Types**: thoughts, insights, connections, questions, observations
+
+### AI-Powered Analysis
+
+- **Theme Extraction**: Identifies recurring topics and concepts in your thinking
+- **Connection Discovery**: Finds non-obvious relationships between ideas
+- **Pattern Recognition**: Detects recurring thought patterns and habits
+- **Background Processing**: Automatic analysis when event thresholds are reached
+
+### Knowledge Graph
+
+- **Concept Distillation**: Extracts and weights core concepts from event streams
+- **Relationship Mapping**: Tracks connections between concepts with strength indicators
+- **Source Attribution**: Maintains human vs AI contribution tracking
+- **Query Interface**: Rich exploration of distilled knowledge
+
+### Conversation Experiments
+
+The system includes automated conversation capabilities for research and experimentation:
+
+- **AI-to-AI Dialogues**: Configure Claude instances to discuss topics automatically
+- **Experiment Framework**: YAML-based conversation orchestration
+- **Knowledge Capture**: Conversation insights integrated into knowledge graph
+
+See [tools/logex/README.md](tools/logex/README.md) for detailed information about conversation experiments and automated dialogue capabilities.
+
+## Project Structure
+
+```
+ks/
+├── ks                          # Main CLI entry point
+├── ksd                         # Real-time dashboard (Go TUI)
+├── setup.sh                   # Installation and dependency management
+├── knowledge/                  # Your data (gitignored)
+│   ├── events/                 # Event streams (JSONL format)
+│   ├── derived/                # Processed insights and rejections
+│   └── kg.db                   # Knowledge graph database
+├── tools/                      # Processing utilities
+│   ├── capture/                # Event logging and search
+│   ├── analyze/                # AI-powered analysis tools
+│   ├── kg/                     # Knowledge graph operations
+│   ├── introspect/             # Human review and curation
+│   ├── logex/                  # Conversation experiments
+│   └── plumbing/               # System infrastructure
+├── lib/                        # Core libraries
+├── tests/                      # Comprehensive test suite
+└── docs/                       # System documentation
 ```
 
-During conversation, Claude will automatically:
-- Capture thoughts and insights as events
-- Query past knowledge when relevant
-- Analyze patterns and connections
-- Build your knowledge graph over time
+## Data Format
 
-### Dashboard (Optional)
-```bash
-ksd                     # Open knowledge system dashboard
-```
-
-The dashboard provides:
-- Real-time system status and event counts
-- Pending analysis notifications
-- Quick access to review findings
-- Navigation to common tools
-- Background process monitoring
-
-Run in a second terminal while using `ks` for a complete overview of your knowledge system activity.
-
-## Directory Structure
-
-```
-chat/                   # Conversation context
-  CLAUDE.md             # Knowledge system instructions
-  knowledge/            # Symlink to ../knowledge
-  tools/                # Symlink to ../tools
-knowledge/              # Personal data (gitignored)
-  events/hot.jsonl      # Current event stream
-  derived/              # Processed knowledge
-tools/                  # Processing utilities (category-based)
-  capture/              # Event capture and query
-  analyze/              # AI-powered pattern extraction
-  introspect/           # Human reflection and review
-  plumbing/             # System infrastructure
-  utils/                # Specialized utilities
-lib/                    # Core library modules
-  categories.sh         # Category-based argument definitions
-  validation.sh         # Category-specific validation
-tools/lib/              # Tool-specific library modules
-  analysis.sh           # Business logic for analysis tools
-```
-
-## Tools
-
-All tools use category-based argument parsing for consistent interfaces and behavior.
-
-### Capture (CAPTURE_INPUT/CAPTURE_SEARCH categories)
-- `tools/capture/events` - Log knowledge events (JSONL format)
-  - Usage: `events TYPE TOPIC [CONTENT]`
-  - Supports stdin input for piped content
-- `tools/capture/query` - Search events across hot log and archives
-  - Standard options: `--days`, `--since`, `--type`, `--topic`, `--limit`, `--reverse`, `--count`
-
-### Analysis (ANALYZE category)  
-- `tools/analyze/extract-themes` - Find recurring themes using AI analysis
-- `tools/analyze/find-connections` - Discover non-obvious connections between events
-- `tools/analyze/identify-recurring-thought-patterns` - Pattern analysis for thought events
-- `tools/analyze/curate-duplicate-knowledge` - Prevent knowledge graph pollution
-  - Standard options: `--days`, `--since`, `--type`, `--topic`, `--format`, `--verbose`
-  - Custom options: `--content`, `--threshold`, `--window`, `--sources`
-
-### Introspection (INTROSPECT category)
-- `tools/introspect/review-findings` - Interactive review of background analysis results
-  - Options: `--list`, `--batch-size`, `--detailed`, `--interactive`, `--confidence-threshold`
-
-### System Infrastructure (PLUMBING category)
-- `tools/plumbing/check-event-triggers` - Monitor event thresholds and spawn analyses
-- `tools/plumbing/monitor-background-processes` - Manage background analysis processes  
-- `tools/plumbing/rotate-logs` - Rotate event logs from hot to archive
-  - Standard options: `--verbose`, `--dry-run`, `--force`
-  - Custom options: `--max-size`, `--max-age`, `--max-events`
-
-### Utilities (UTILS category)
-- `tools/utils/validate-jsonl` - Validate JSONL file format
-- `tools/utils/generate-argparse` - Generate category-based argument parsers
-
-## Category System
-
-The knowledge system uses a category-based argument parsing system for consistency across all tools:
-
-**Categories and Standard Options:**
-- **ANALYZE**: `--days`, `--since`, `--type`, `--topic`, `--format`, `--verbose`
-- **CAPTURE_INPUT**: Custom positional arguments (TYPE TOPIC [CONTENT])
-- **CAPTURE_SEARCH**: `--days`, `--since`, `--type`, `--topic`, `--limit`, `--reverse`, `--count`  
-- **PLUMBING**: `--verbose`, `--dry-run`, `--force`, `--status`, `--active`, `--completed`, `--failed`, `--cleanup`
-- **INTROSPECT**: `--list`, `--batch-size`, `--detailed`, `--interactive`, `--confidence-threshold`
-- **UTILS**: Custom argument patterns per tool
-
-**Code Generation:**
-```bash
-# Generate argument parser for a new tool
-tools/utils/generate-argparse ANALYZE --tool-name my-analysis --description "My analysis tool"
-```
-
-This system eliminates code duplication and ensures consistent interfaces across all tools.
-
-
-## Event Format
-
-Events are stored in JSONL (JSON Lines) format - one JSON object per line:
+Knowledge is stored in JSONL (JSON Lines) format - one JSON object per line:
 
 ```json
-{"ts":"2025-06-09T16:06:01Z","type":"thought","topic":"memory","content":"Human memory is associative...","metadata":{}}
+{"ts":"2025-06-17T10:30:00Z","type":"thought","topic":"systems","content":"Event sourcing provides audit trail...","metadata":{}}
+{"ts":"2025-06-17T10:31:00Z","type":"connection","topic":"architecture","content":"Event sourcing relates to CQRS pattern"}
 ```
 
-Event types: `thought`, `connection`, `question`, `insight`, `process`
+This format is:
+- Grep-friendly for quick searches
+- Streamable for real-time processing  
+- Robust against partial writes
+- Human-readable for inspection
 
-## Background Analysis
+## Tool Categories
 
-The system can automatically run analysis in the background to surface themes and insights.
+All tools follow consistent argument patterns organized by category:
 
-### Event-Driven Analysis
+- **Capture** (`tools/capture/`): Event logging and search
+- **Analyze** (`tools/analyze/`): AI-powered pattern extraction
+- **Knowledge Graph** (`tools/kg/`): Concept distillation and querying
+- **Introspect** (`tools/introspect/`): Human review and curation
+- **Logex** (`tools/logex/`): Conversation experiments and automation
+- **Plumbing** (`tools/plumbing/`): System infrastructure and monitoring
+- **Utils** (`tools/utils/`): Specialized utilities and validation
 
-Background analyses are automatically triggered based on event count thresholds:
+Each tool provides `--help` for detailed usage information.
+
+## Background Processing
+
+The system automatically analyzes your knowledge as you capture it:
+
+1. **Event Thresholds**: Analysis triggers when you reach configurable event counts
+2. **Background Analysis**: AI processing runs automatically without interrupting your workflow
+3. **Review Queue**: Findings await your approval before integration
+4. **Human Curation**: You control which insights become part of your knowledge base
+
+Monitor background activity via the dashboard (`ksd`) or status commands.
+
+## Testing and Development
+
+### Running Tests
 
 ```bash
-# Configuration (environment variables)
-export KS_EVENT_THRESHOLD_THEMES=10        # Trigger theme analysis (default: 10)
-export KS_EVENT_THRESHOLD_CONNECTIONS=20   # Trigger connections (default: 20)
-export KS_EVENT_THRESHOLD_PATTERNS=30      # Trigger patterns (default: 30)
+# Fast tests (no AI API calls, ~30 seconds)
+./tests/run_fast_tests.sh
+
+# Mocked tests (fake AI responses, ~60 seconds)  
+./tests/run_mocked_tests.sh
+
+# End-to-end tests (real Claude API, ~5 minutes, local only)
+./tests/run_e2e_tests.sh
 ```
 
-How it works:
-1. Each event capture checks if thresholds are met
-2. Analyses spawn automatically in background
-3. You're notified when findings are ready for review
-4. Review findings in a separate terminal
-
-### Reviewing Analysis Findings
-
-When notified of pending analyses:
+### Development Workflow
 
 ```bash
-# Run in a separate terminal
-tools/workflow/review-findings
+# Check current priorities
+gh issue list --label "priority: high"
 
-# List pending analyses without reviewing
-tools/workflow/review-findings --list
+# Run development tests
+./tests/run_fast_tests.sh
+
+# Check system implementation status
+cat docs/implementation-status.md
 ```
 
-The review process:
-- Each finding is shown individually
-- Approve (y) or reject (n) each finding
-- Approved findings become new insight events
-- Queue is cleared after review
+## Architecture Philosophy
 
-### Monitoring Background Processing
+- **Local-First**: Your knowledge stays on your filesystem
+- **Event-Sourced**: Complete audit trail of knowledge development
+- **Human-in-the-Loop**: AI assists, humans decide what knowledge to keep
+- **Modular Design**: Composable tools following Unix philosophy
+- **Research-Oriented**: Built for exploration and experimentation
 
-```bash
-# Check analysis queue
-cat knowledge/.background/analysis_queue.json | jq .
+## Contributing
 
-# Monitor background processes
-tools/plumbing/monitor-background-processes --status
+### Development Setup
 
-# Check trigger state
-cat knowledge/.background/.event_trigger_state
+1. Fork and clone the repository
+2. Run `./setup.sh` to install dependencies
+3. Familiarize yourself with the tool conventions in `CLAUDE.md`
+4. Run tests to ensure everything works: `./tests/run_fast_tests.sh`
 
-# View logs
-tail -f knowledge/.background/analysis.log
-```
+### Code Conventions
 
-### Manual Trigger Testing
+- All tools follow category-based argument parsing
+- Consistent error handling and library usage
+- Comprehensive test coverage required
+- See `CLAUDE.md` for detailed development guidelines
 
-```bash
-# Force trigger check (verbose mode)
-tools/plumbing/check-event-triggers verbose
+### Current Development Focus
 
-# Reset trigger counts if needed
-echo '{"last_count": 0, "last_theme_trigger": 0, "last_connection_trigger": 0, "last_pattern_trigger": 0, "last_check": "2025-01-01T00:00:00Z"}' > knowledge/.background/.event_trigger_state
-```
+See `docs/implementation-status.md` for current priorities and `gh issue list` for active work items.
 
-The system prevents duplicate analyses by blocking new runs while findings await review.
+## Documentation
 
-## Architecture Benefits
+- `docs/ks-system-analysis.md` - Comprehensive system overview
+- `docs/implementation-status.md` - Current development status
+- `docs/kg-implementation-status.md` - Knowledge graph capabilities
+- `docs/testing-strategy.md` - Testing approach and coverage
+- `tools/logex/README.md` - Conversation experiment framework
+- Individual tool documentation via `<toolname> --help`
 
-- **Context separation**: Conversation vs analysis modes
-- **Clean tool interfaces**: Explicit prompts via `claude --print`
-- **Symlinked access**: Tools work from conversation context
-- **Extensible**: Easy to add new analysis capabilities
+## License
+
+MIT License - see LICENSE file for details.
+
+## Research Context
+
+This is ongoing research software exploring personal knowledge management, AI-assisted thinking, and automated conversation systems. The system is functional and tested but continues to evolve based on experimental findings and usage patterns.
