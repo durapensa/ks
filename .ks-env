@@ -33,6 +33,12 @@ _setup_ks_tools() {
             "flock:/opt/homebrew/bin/flock"
         )
         
+        # Add Claude CLI if available (typically from NVM Node.js installation)
+        local claude_path=$(command -v claude 2>/dev/null)
+        if [[ -n "$claude_path" ]]; then
+            tool_mappings+=("claude:$claude_path")
+        fi
+        
         for mapping in "${tool_mappings[@]}"; do
             local name="${mapping%%:*}"
             local target="${mapping##*:}"
@@ -50,6 +56,13 @@ _setup_ks_tools() {
     else
         # Linux - tools should already be modern, but create symlinks for consistency
         local standard_tools=(bash date find stat getopt flock)
+        
+        # Add Claude CLI if available
+        local claude_path=$(command -v claude 2>/dev/null)
+        if [[ -n "$claude_path" ]]; then
+            standard_tools+=(claude)
+        fi
+        
         for tool in "${standard_tools[@]}"; do
             local tool_path=$(command -v "$tool" 2>/dev/null)
             if [[ -n "$tool_path" ]]; then
@@ -67,15 +80,6 @@ _setup_ks_tools() {
     # Only prepend KS bin if not already in PATH
     if [[ ":$PATH:" != *":$ks_bin:"* ]]; then
         export PATH="$ks_bin:$PATH"
-    fi
-    
-    # Ensure Claude CLI is available (typically from NVM Node.js installation)
-    local claude_path=$(command -v claude 2>/dev/null)
-    if [[ -n "$claude_path" ]]; then
-        local claude_dir=$(dirname "$claude_path")
-        if [[ ":$PATH:" != *":$claude_dir:"* ]]; then
-            export PATH="$claude_dir:$PATH"
-        fi
     fi
     
     # Export KS_BASH for compatibility (though 'bash' command now works everywhere)
