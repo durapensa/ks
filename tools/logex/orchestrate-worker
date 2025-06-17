@@ -432,7 +432,8 @@ main() {
         ks_exit_usage "CONVERSATION_DIR required"
     fi
     
-    CONVERSATION_DIR="$1"
+    # Normalize to absolute path for consistent downstream usage
+    CONVERSATION_DIR="$(cd "$1" && pwd)"
     CONFIG_FILE="$CONVERSATION_DIR/logex-config.yaml"
     
     # Validate conversation directory

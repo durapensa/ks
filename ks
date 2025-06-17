@@ -93,10 +93,6 @@ show_all_help() {
 }
 
 show_claude_help() {
-    echo "ks --claudehelp"
-    echo ""
-    show_usage
-    echo ""
     for tool in events query extract-themes find-connections extract-concepts; do
         if [[ -n "${TOOL_MAP[$tool]:-}" ]]; then
             echo "${TOOL_MAP[$tool]} --help"

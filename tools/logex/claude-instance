@@ -190,10 +190,23 @@ create_claude_instructions() {
         echo "- Keep responses conversational but concise (1-3 paragraphs)"
         echo "- Use tools proactively to capture interesting insights from the dialogue"
         echo ""
-        echo "**Knowledge Capture Examples:**"
-        echo "- \`events insight \"dialogue-patterns\" \"Noticed interesting turn-taking in this conversation\"\`"
-        echo "- \`query \"relevant topic\" --days 7\` to search existing knowledge"
-        echo "- Record observations about the conversation dynamics or content"
+        echo "**IMPORTANT: Use Knowledge Capture Tools During Conversation**"
+        echo ""
+        echo "As you engage in this dialogue, actively use the knowledge system tools to capture insights, connections, and observations. Include these tool commands directly in your response text using backticks:"
+        echo ""
+        echo "Examples of tool usage:"
+        echo "- \`tools/capture/events insight \"systems-thinking\" \"Discovered interesting parallel between biological and software systems\"\`"
+        echo "- \`tools/capture/events connection \"complexity-science\" \"Software architecture can learn from adaptive systems principles\"\`"
+        echo "- \`tools/capture/query \"emergence\" --days 30\` (to search for related concepts)"
+        echo "- \`tools/capture/events observation \"dialogue-patterns\" \"Notice how conversation reveals new perspectives through interaction\"\`"
+        echo ""
+        echo "**When to use tools:**"
+        echo "- When you identify an insight worth preserving"
+        echo "- When you notice connections between concepts being discussed"
+        echo "- When you want to search for related knowledge"
+        echo "- When the conversation reveals interesting patterns"
+        echo ""
+        echo "**Tool format:** Always use backticks around complete commands like \`tools/capture/events insight \"topic\" \"content\"\`"
         echo ""
         
         # Include the complete ks tools reference from show_claude_help
@@ -215,8 +228,8 @@ create_claude_instructions() {
         echo "  query        Query the knowledge graph database"
         echo ""
         echo "Examples:"
-        echo "  events insight \"topic\" \"discovered insight\""
-        echo "  query --concepts"
+        echo "  tools/capture/events insight \"topic\" \"discovered insight\""
+        echo "  tools/capture/query --concepts"
         echo ""
         
         # Add tool reference - we'll enhance this to include actual show_claude_help output
@@ -311,6 +324,9 @@ After providing your response, please type 'END_SESSION' to conclude this turn."
         record_conversant_event "response_generated" "$claude_output"
         log_info "Claude response captured: ${#claude_output} characters"
         
+        # Parse and execute any tool commands in Claude's response
+        parse_and_execute_tools "$claude_output" "$conversant_dir"
+        
         # Check for any events captured during the session
         check_knowledge_capture
         
@@ -335,6 +351,92 @@ After providing your response, please type 'END_SESSION' to conclude this turn."
     record_conversant_event "session_completed" "exit_code: $claude_exit_code, response_length: ${#claude_output}"
 }
 
+parse_and_execute_tools() {
+    local claude_response="$1"
+    local conversant_dir="$2"
+    local tools_executed=0
+    
+    log_info "Parsing Claude response for tool commands"
+    
+    # Parse tool commands from Claude response using regex patterns
+    # Pattern 1: `tools/capture/events TYPE "TOPIC" "CONTENT"`
+    # Pattern 2: `tools/capture/query "SEARCH" --days N`
+    # Pattern 3: Other tools/analyze/* tool commands
+    
+    # Save current working directory  
+    local original_pwd="$PWD"
+    
+    # We're already in the conversant directory from run_claude_session
+    # No need to cd again - just verify we have the tools
+    if [[ ! -L "tools" ]]; then
+        log_error "Tools symlink not found in conversant directory: $PWD"
+        return 1
+    fi
+    
+    # Override only the output paths for capture tools (keep KS_ROOT for library loading)
+    # CONVERSATION_DIR is now always absolute from orchestrate-worker
+    export KS_HOT_LOG="$CONVERSATION_DIR/knowledge/events/hot.jsonl"
+    export KS_DERIVED_DIR="$CONVERSATION_DIR/knowledge/derived"
+    export KS_TOOLS_DIR="$CONVERSATION_DIR/tools"
+    
+    # Execute tool commands with experiment environment
+    while read -r tool_line; do
+        if [[ -n "$tool_line" ]]; then
+            log_info "Executing parsed tool command: $tool_line"
+            
+            # Execute the tool command and capture result
+            local tool_output
+            local tool_exit_code
+            if tool_output=$(eval "$tool_line" 2>&1); then
+                tool_exit_code=0
+                tools_executed=$((tools_executed + 1))
+                log_info "Tool executed successfully: $tool_line"
+                
+                # Record tool execution event
+                record_conversant_event "tool_executed" "command: $tool_line, output: $tool_output"
+            else
+                tool_exit_code=$?
+                log_error "Tool execution failed: $tool_line (exit code: $tool_exit_code)"
+                record_conversant_event "tool_failed" "command: $tool_line, exit_code: $tool_exit_code, output: $tool_output"
+            fi
+        fi
+    done < <(
+        # Extract tools/capture/events commands
+        echo "$claude_response" | grep -E '`\s*tools/capture/events\s+\w+\s+[^`]+`' | sed 's/.*`\s*\(tools\/capture\/events[^`]*\)`.*/\1/' | \
+        while read -r line; do
+            # Clean up the line and validate it looks like a proper events command
+            if [[ "$line" =~ ^tools/capture/events[[:space:]]+[[:alnum:]_]+[[:space:]]+.+ ]]; then
+                echo "$line"
+            fi
+        done
+        
+        # Extract tools/capture/query commands
+        echo "$claude_response" | grep -E '`\s*tools/capture/query\s+[^`]+`' | sed 's/.*`\s*\(tools\/capture\/query[^`]*\)`.*/\1/' | \
+        while read -r line; do
+            # Clean up the line and validate it looks like a proper query command
+            if [[ "$line" =~ ^tools/capture/query[[:space:]].+ ]]; then
+                echo "$line"
+            fi
+        done
+        
+        # Extract other tools/* commands (analyze tools, etc.)
+        echo "$claude_response" | grep -E '`\s*tools/(analyze|kg|utils)/[^`]*`' | sed 's/.*`\s*\(tools\/[^`]*\)`.*/\1/' | \
+        while read -r line; do
+            # Output tool command as-is
+            echo "$line"
+        done
+    )
+    
+    # Restore original working directory
+    cd "$original_pwd" || log_error "Failed to restore working directory: $original_pwd"
+    
+    log_info "Tool parsing complete: $tools_executed tools executed"
+    
+    if [[ $tools_executed -gt 0 ]]; then
+        record_conversant_event "tools_parsed" "tools_executed: $tools_executed"
+    fi
+}
+
 check_knowledge_capture() {
     local conversant_dir="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME"
     local events_count=0
@@ -348,8 +450,18 @@ check_knowledge_capture() {
         fi
     fi
     
-    # Could also check for query usage, file modifications, etc.
-    log_info "Knowledge capture check complete: $events_count events"
+    # Also check the main conversation knowledge directory for events
+    local main_events_file="$CONVERSATION_DIR/$KS_CONVERSATION_HOT_LOG"
+    if [[ -f "$main_events_file" ]]; then
+        local main_events_count
+        main_events_count=$(wc -l < "$main_events_file" 2>/dev/null | tr -d ' ' || echo "0")
+        if [[ $main_events_count -gt 0 ]]; then
+            log_info "Main knowledge capture: $main_events_count events in conversation hot log"
+            record_conversant_event "main_knowledge_captured" "events_count: $main_events_count"
+        fi
+    fi
+    
+    log_info "Knowledge capture check complete: $events_count conversant events, main events file checked"
 }
 
 # Signal handling

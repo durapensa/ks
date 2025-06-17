@@ -79,8 +79,14 @@ ks_claude_conversation() {
     local result
     local exit_code
     
-    if result=$(timeout "$timeout_seconds" ks_claude --model "$KS_MODEL" "$prompt" 2>&1); then
+    # Use claude directly since timeout can't call bash functions
+    if result=$(timeout "$timeout_seconds" claude --model "$KS_MODEL" "$prompt" 2>&1); then
         exit_code=0
+        # Apply the same unwrapping logic as ks_claude
+        if jq -e '.result' >/dev/null 2>&1 <<< "$result"; then
+            # Extract the actual result content
+            result=$(jq -r '.result' <<< "$result")
+        fi
     else
         exit_code=$?
         # Handle timeout vs other errors
