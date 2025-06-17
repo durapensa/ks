@@ -61,6 +61,41 @@ ks_claude_analyze() {
     echo "$result"
 }
 
+ks_claude_conversation() {
+    # Invoke Claude for conversational interaction with timeout and error handling
+    # Usage: ks_claude_conversation "full_prompt" [timeout_seconds]
+    # Example: ks_claude_conversation "$instructions_and_prompt" 120
+    # Returns: Raw conversational output suitable for dialogue systems
+    
+    local prompt="$1"
+    local timeout_seconds="${2:-120}"
+    
+    if [[ -z "$prompt" ]]; then
+        echo "Error: ks_claude_conversation requires a prompt" >&2
+        return 1
+    fi
+    
+    # Call Claude with conversational options and timeout
+    local result
+    local exit_code
+    
+    if result=$(timeout "$timeout_seconds" ks_claude --model "$KS_MODEL" "$prompt" 2>&1); then
+        exit_code=0
+    else
+        exit_code=$?
+        # Handle timeout vs other errors
+        if [[ $exit_code -eq 124 ]]; then
+            echo "Error: Claude conversation timed out after ${timeout_seconds}s" >&2
+        else
+            echo "Error: Claude conversation failed with exit code: $exit_code" >&2
+        fi
+        return "$exit_code"
+    fi
+    
+    # Return raw output for conversational use
+    echo "$result"
+}
+
 ks_format_analysis() {
     # Format analysis JSON output based on requested format
     # Usage: ks_format_analysis <json_data> <format> <title>

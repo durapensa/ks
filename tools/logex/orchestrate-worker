@@ -148,9 +148,11 @@ record_conversation_event() {
     local timestamp
     timestamp=$(ks_timestamp)
     
-    # Record to main knowledge log (unified hot.jsonl for ksd monitoring)
+    # Route orchestration events to orchestration log, not knowledge log
     local event_json="{\"timestamp\":\"$timestamp\",\"type\":\"$event_type\",\"details\":\"$details\",\"turn\":$TOTAL_TURNS,\"speaker\":\"$CURRENT_SPEAKER\"}"
-    echo "$event_json" >> "$CONVERSATION_DIR/$KS_CONVERSATION_HOT_LOG"
+    local orchestration_log="$CONVERSATION_DIR/$KS_CONVERSATION_ORCHESTRATION_LOG"
+    mkdir -p "$(dirname "$orchestration_log")"
+    echo "$event_json" >> "$orchestration_log"
     
     log_debug "Event recorded: $event_type - $details"
 }

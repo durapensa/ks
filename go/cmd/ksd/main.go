@@ -16,6 +16,12 @@ import (
 	"github.com/durapensa/ks/pkg/config"
 )
 
+var (
+	// Build info set by linker
+	buildTime = "unknown"
+	version   = "dev"
+)
+
 // Screen types
 type screenType int
 
@@ -260,6 +266,14 @@ func getBashPath() string {
 	return "bash"
 }
 
+// getCurrentDir returns the current working directory
+func getCurrentDir() string {
+	if dir, err := os.Getwd(); err == nil {
+		return dir
+	}
+	return "unknown"
+}
+
 // Load dashboard data from system with config
 func loadDashboardDataWithConfig(cfg *config.Config) tea.Cmd {
 	return func() tea.Msg {
@@ -476,11 +490,15 @@ func (m model) View() string {
 	var pathInfo string
 	if m.config.IsConversation {
 		title = titleStyle.Width(80).Render(fmt.Sprintf("KNOWLEDGE SYSTEM - %s", strings.ToUpper(m.config.ContextName)))
-		pathInfo = statusStyle.Render(fmt.Sprintf("Knowledge: %s", m.config.KnowledgeDir))
+		pathInfo = statusStyle.Render(fmt.Sprintf("Knowledge: %s | Build: %s", m.config.KnowledgeDir, buildTime))
 	} else {
 		title = titleStyle.Width(80).Render("KNOWLEDGE SYSTEM DASHBOARD")
-		pathInfo = statusStyle.Render(fmt.Sprintf("Knowledge: %s | Hot Log: %s", m.config.KnowledgeDir, m.config.HotLog))
+		pathInfo = statusStyle.Render(fmt.Sprintf("Knowledge: %s | Hot Log: %s | Build: %s", m.config.KnowledgeDir, m.config.HotLog, buildTime))
 	}
+	
+	// Debug info for conversation detection
+	debugInfo := statusStyle.Render(fmt.Sprintf("IsConversation: %v | PWD: %s | Hot: %s", 
+		m.config.IsConversation, getCurrentDir(), m.config.HotLog))
 	
 	// Navigation breadcrumb with context info
 	var breadcrumb string
@@ -523,7 +541,7 @@ func (m model) View() string {
 	// Help text
 	help := m.renderHelp()
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s\n\n%s\n\n%s", title, pathInfo, nav, separator, content, help)
+	return fmt.Sprintf("%s\n%s\n%s\n%s\n%s\n\n%s\n\n%s", title, pathInfo, debugInfo, nav, separator, content, help)
 }
 
 func (m model) renderDashboard() string {

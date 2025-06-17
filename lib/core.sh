@@ -81,6 +81,10 @@ ks_create_conversation_dirs() {
     mkdir -p "$full_path/conversants"
     mkdir -p "$full_path/supervise"
     
+    # Create empty files for ksd monitoring (prevents file watch errors)
+    touch "$full_path/$KS_CONVERSATION_HOT_LOG"
+    touch "$full_path/$KS_CONVERSATION_ORCHESTRATION_LOG"
+    
     # Create symlinks back to ks project
     if [[ -n "${KS_ROOT:-}" ]]; then
         if [[ -d "$KS_ROOT/tools" ]]; then

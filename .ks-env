@@ -34,8 +34,9 @@ _setup_ks_tools() {
         )
         
         # Add Claude CLI if available (typically from NVM Node.js installation)
-        local claude_path=$(command -v claude 2>/dev/null)
-        if [[ -n "$claude_path" ]]; then
+        # Skip our own bin directory to avoid circular symlinks
+        local claude_path=$(PATH="${PATH//$ks_bin:/}" command -v claude 2>/dev/null)
+        if [[ -n "$claude_path" && "$claude_path" != "$ks_bin"* ]]; then
             tool_mappings+=("claude:$claude_path")
         fi
         
@@ -58,8 +59,9 @@ _setup_ks_tools() {
         local standard_tools=(bash date find stat getopt flock)
         
         # Add Claude CLI if available
-        local claude_path=$(command -v claude 2>/dev/null)
-        if [[ -n "$claude_path" ]]; then
+        # Skip our own bin directory to avoid circular symlinks
+        local claude_path=$(PATH="${PATH//$ks_bin:/}" command -v claude 2>/dev/null)
+        if [[ -n "$claude_path" && "$claude_path" != "$ks_bin"* ]]; then
             standard_tools+=(claude)
         fi
         
@@ -114,6 +116,7 @@ export KS_CONVERSATION_CONFIG="logex-config.yaml"
 export KS_CONVERSATION_KNOWLEDGE_DIR="knowledge"
 export KS_CONVERSATION_EVENTS_DIR="$KS_CONVERSATION_KNOWLEDGE_DIR/events"
 export KS_CONVERSATION_HOT_LOG="$KS_CONVERSATION_EVENTS_DIR/hot.jsonl"
+export KS_CONVERSATION_ORCHESTRATION_LOG="supervise/orchestration.jsonl"
 
 # Note: Standard tool names (bash, date, find, stat, getopt, flock) now work
 # consistently across platforms via the symlinks in $KS_ROOT/bin/

@@ -11,6 +11,7 @@ source "$KS_ROOT/lib/core.sh"
 source "$KS_ROOT/lib/error.sh"
 source "$KS_ROOT/lib/usage.sh"
 source "$KS_ROOT/lib/argparse.sh"
+source "$KS_ROOT/tools/lib/claude.sh"
 
 # Configuration variables
 declare -g CONVERSATION_DIR=""
@@ -114,9 +115,11 @@ record_conversant_event() {
     # Write to individual conversant file for detailed logging
     echo "$event_json" >> "$JSONL_FILE"
     
-    # Also write to unified hot.jsonl for ksd monitoring
-    local hot_log_path="$CONVERSATION_DIR/$KS_CONVERSATION_HOT_LOG"
-    echo "$event_json" >> "$hot_log_path"
+    # Claude instance events are all orchestration events
+    # Knowledge events come from Claude using 'ks events' commands directly
+    local orchestration_log="$CONVERSATION_DIR/$KS_CONVERSATION_ORCHESTRATION_LOG"
+    mkdir -p "$(dirname "$orchestration_log")"
+    echo "$event_json" >> "$orchestration_log"
 }
 
 # Claude CLI interaction
@@ -147,6 +150,9 @@ setup_claude_environment() {
     # Generate complete ks-instructions.md file with persona, context, and tools
     create_claude_instructions
     
+    # Copy proven CLAUDE.md behavior directives from interactive mode
+    copy_claude_behavior_directives
+    
     log_info "Environment setup complete with knowledge capture directories"
 }
 
@@ -157,6 +163,8 @@ create_claude_instructions() {
     
     {
         echo "# Logex Conversant: $CONVERSANT_NAME"
+        echo ""
+        echo "See @CLAUDE.md for core behavioral directives and tool usage patterns."
         echo ""
         echo "## Persona"
         echo ""
@@ -191,11 +199,24 @@ create_claude_instructions() {
         # Include the complete ks tools reference from show_claude_help
         echo "## Knowledge System Tools"
         echo ""
-        echo "Available ks capture tools for recording insights and searching knowledge:"
+        echo "Core knowledge system CLI and key capture tools."
+        echo "Each tool can be invoked directly using the paths shown below."
         echo ""
         
-        # Include the actual ks tools help output (same as interactive mode)
-        "$KS_ROOT/ks" --claudehelp | tail -n +3  # Skip the "ks --claudehelp" header line
+        # Use the same concise tool help as interactive mode
+        echo "ks --claudehelp"
+        echo ""
+        echo "Description: Knowledge system CLI for interactive capture and analysis."
+        echo ""
+        echo "Usage: ks [OPTION]... [SUBCOMMAND] [ARGS]..."
+        echo ""
+        echo "Key capture tools:"
+        echo "  events       Append events to knowledge stream"
+        echo "  query        Query the knowledge graph database"
+        echo ""
+        echo "Examples:"
+        echo "  events insight \"topic\" \"discovered insight\""
+        echo "  query --concepts"
         echo ""
         
         # Add tool reference - we'll enhance this to include actual show_claude_help output
@@ -206,6 +227,18 @@ create_claude_instructions() {
     } > "$instructions_file"
     
     log_info "Claude instructions created: ${#PERSONA} chars persona, context: ${CONVERSATION_CONTEXT:+present}"
+}
+
+copy_claude_behavior_directives() {
+    local claude_md_source="$KS_ROOT/chat/CLAUDE.md"
+    local claude_md_target="$CONVERSATION_DIR/conversants/$CONVERSANT_NAME/.claude/CLAUDE.md"
+    
+    if [[ -f "$claude_md_source" ]]; then
+        cp "$claude_md_source" "$claude_md_target"
+        log_info "Copied CLAUDE.md behavior directives from interactive mode"
+    else
+        log_info "Warning: CLAUDE.md not found at $claude_md_source"
+    fi
 }
 
 run_claude_session() {
@@ -230,8 +263,29 @@ run_claude_session() {
         return 1
     }
     
-    # Prepare initial prompt for Claude
-    local initial_prompt="Please provide a response as $CONVERSANT_NAME."
+    # Construct full prompt by reading instruction files directly
+    local claude_md_file="$conversant_dir/.claude/CLAUDE.md"
+    local instructions_file="$conversant_dir/.claude/ks-instructions.md"
+    
+    local claude_directives=""
+    if [[ -f "$claude_md_file" ]]; then
+        claude_directives=$(cat "$claude_md_file")
+    fi
+    
+    local persona_instructions=""
+    if [[ -f "$instructions_file" ]]; then
+        persona_instructions=$(cat "$instructions_file")
+    fi
+    
+    # Construct complete prompt with all context
+    local initial_prompt="$claude_directives
+
+$persona_instructions
+
+---
+
+Please provide a response as $CONVERSANT_NAME."
+    
     if [[ -n "$CONVERSATION_CONTEXT" ]]; then
         initial_prompt="$initial_prompt $CONVERSATION_CONTEXT"
     fi
@@ -241,9 +295,8 @@ run_claude_session() {
 
 After providing your response, please type 'END_SESSION' to conclude this turn."
     
-    # Use a timeout to prevent hanging conversations
-    # Provide initial prompt via stdin and capture output
-    if claude_output=$(echo "$initial_prompt" | timeout 120 claude 2>&1); then
+    # Use ks_claude_conversation for proper logex integration
+    if claude_output=$(ks_claude_conversation "$initial_prompt" 120); then
         claude_exit_code=0
         log_info "Claude session completed successfully"
     else

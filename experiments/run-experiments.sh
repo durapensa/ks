@@ -63,7 +63,7 @@ experiment_status() {
     local exp_dir="$KS_EXPERIMENTS_DIR/$experiment"
     
     if [[ ! -d "$exp_dir" ]]; then
-        echo "❌ $experiment: Not configured"
+        echo "[X] $experiment: Not configured"
         return
     fi
     
@@ -74,16 +74,16 @@ experiment_status() {
     printf "%-25s" "$experiment:"
     
     if [[ ! -f "$config_file" ]]; then
-        echo "❌ No config"
+        echo "[X] No config"
     elif [[ ! -f "$hot_log" ]]; then
-        echo "⚪ Configured, not started"
+        echo "[ ] Configured, not started"
     elif [[ ! -f "$kg_db" ]]; then
         local event_count=$(wc -l < "$hot_log" 2>/dev/null || echo "0")
-        echo "🟡 Running ($event_count events, no KG)"
+        echo "[~] Running ($event_count events, no KG)"
     else
         local event_count=$(wc -l < "$hot_log" 2>/dev/null || echo "0")
         local concept_count=$(sqlite3 "$kg_db" "SELECT COUNT(*) FROM concepts;" 2>/dev/null || echo "0")
-        echo "✅ Complete ($event_count events, $concept_count concepts)"
+        echo "[*] Complete ($event_count events, $concept_count concepts)"
     fi
 }
 
@@ -91,9 +91,15 @@ run_experiment() {
     local experiment="$1"
     local exp_dir="$KS_EXPERIMENTS_DIR/$experiment"
     
-    echo "🚀 Starting experiment: $experiment"
-    echo "📁 Directory: $exp_dir"
+    echo "Starting experiment: $experiment"
+    echo "Directory: $exp_dir"
     echo ""
+    
+    # Ensure required directory structure and files exist for ksd monitoring
+    mkdir -p "$exp_dir/$KS_CONVERSATION_KNOWLEDGE_DIR/events"
+    mkdir -p "$exp_dir/supervise"
+    touch "$exp_dir/$KS_CONVERSATION_HOT_LOG"
+    touch "$exp_dir/$KS_CONVERSATION_ORCHESTRATION_LOG"
     
     # Show experiment parameters
     local config_file="$exp_dir/$KS_CONVERSATION_CONFIG"
@@ -104,7 +110,7 @@ run_experiment() {
         local alice_persona=$(grep -A1 "alice:" "$config_file" | grep "persona:" | sed 's/.*persona: *"\([^"]*\)".*/\1/' | head -c 60)
         local bob_persona=$(grep -A1 "bob:" "$config_file" | grep "persona:" | sed 's/.*persona: *"\([^"]*\)".*/\1/' | head -c 60)
         
-        echo "📊 Experiment Parameters:"
+        echo "Experiment Parameters:"
         echo "   Topic: $topic"
         echo "   Turns: $max_turns per conversant ($total_turns total)"
         echo "   Alice: ${alice_persona}..."
@@ -112,7 +118,7 @@ run_experiment() {
         echo ""
     fi
     
-    echo "💡 To monitor in real-time, open second terminal and run:"
+    echo "To monitor in real-time, open second terminal and run:"
     echo "   cd $exp_dir"
     echo "   source .ks-env"
     echo "   ksd"
@@ -124,14 +130,14 @@ run_experiment() {
     bash "$KS_ROOT/tools/logex/orchestrate-worker" "$exp_dir"
     
     echo ""
-    echo "✅ Experiment completed: $experiment"
-    echo "🔍 Running knowledge graph distillation..."
+    echo "Experiment completed: $experiment"
+    echo "Running knowledge graph distillation..."
     
     # Run knowledge graph distillation
     cd "$exp_dir"
     bash "$KS_ROOT/tools/kg/run-distillation"
     
-    echo "📊 Experiment ready for analysis. Run:"
+    echo "Experiment ready for analysis. Run:"
     echo "   $0 analyze $experiment"
 }
 
@@ -145,27 +151,27 @@ analyze_experiment() {
     
     local kg_db="$exp_dir/$KS_CONVERSATION_KNOWLEDGE_DIR/concepts.db"
     if [[ ! -f "$kg_db" ]]; then
-        echo "⚠️  Knowledge graph not found. Running distillation first..."
+        echo "Knowledge graph not found. Running distillation first..."
         cd "$exp_dir"
         bash "$KS_ROOT/tools/kg/run-distillation"
     fi
     
-    echo "📊 Analyzing experiment: $experiment"
+    echo "Analyzing experiment: $experiment"
     echo ""
     
-    echo "🎯 Conceptual Attractors:"
+    echo "Conceptual Attractors:"
     bash "$KS_ROOT/tools/analyze/conceptual-attractors" "$experiment" --verbose
     echo ""
     
-    echo "🔗 Relationship Emergence:"
+    echo "Relationship Emergence:"
     bash "$KS_ROOT/tools/analyze/relationship-emergence" "$experiment" --verbose
     echo ""
     
-    echo "🧠 Knowledge Consolidation:"
+    echo "Knowledge Consolidation:"
     bash "$KS_ROOT/tools/analyze/knowledge-consolidation" "$experiment" --verbose
     echo ""
     
-    echo "✅ Analysis complete for: $experiment"
+    echo "Analysis complete for: $experiment"
 }
 
 clean_experiment() {
@@ -176,17 +182,26 @@ clean_experiment() {
         ks_exit_error "Experiment not found: $experiment"
     fi
     
-    echo "⚠️  This will delete all experiment data for: $experiment"
-    echo "📁 Directory: $exp_dir/knowledge/"
+    echo "This will delete all experiment data for: $experiment"
+    echo "Directory: $exp_dir/knowledge/"
     echo ""
     echo "Type 'yes' to confirm:"
     read -r confirmation
     
     if [[ "$confirmation" == "yes" ]]; then
+        # Remove experiment data but preserve directory structure for ksd
         rm -rf "$exp_dir/$KS_CONVERSATION_KNOWLEDGE_DIR"
-        echo "✅ Cleaned experiment data: $experiment"
+        rm -f "$exp_dir/supervise/orchestration.jsonl"
+        
+        # Recreate structure for ksd monitoring
+        mkdir -p "$exp_dir/$KS_CONVERSATION_KNOWLEDGE_DIR/events"
+        mkdir -p "$exp_dir/supervise"
+        touch "$exp_dir/$KS_CONVERSATION_HOT_LOG"
+        touch "$exp_dir/$KS_CONVERSATION_ORCHESTRATION_LOG"
+        
+        echo "Cleaned experiment data: $experiment"
     else
-        echo "❌ Clean cancelled"
+        echo "Clean cancelled"
     fi
 }
 
@@ -195,14 +210,14 @@ case "${1:-}" in
     "run")
         if [[ $# -eq 1 ]]; then
             # Run all experiments
-            echo "🚀 Running all experiments sequentially..."
+            echo "Running all experiments sequentially..."
             for experiment in "${EXPERIMENTS[@]}"; do
                 echo ""
                 echo "========================================"
                 run_experiment "$experiment"
             done
             echo ""
-            echo "✅ All experiments completed!"
+            echo "All experiments completed!"
         elif [[ $# -eq 2 ]]; then
             # Run specific experiment
             validate_experiment "$2"
