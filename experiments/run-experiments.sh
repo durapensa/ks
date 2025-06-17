@@ -94,6 +94,24 @@ run_experiment() {
     echo "🚀 Starting experiment: $experiment"
     echo "📁 Directory: $exp_dir"
     echo ""
+    
+    # Show experiment parameters
+    local config_file="$exp_dir/$KS_CONVERSATION_CONFIG"
+    if [[ -f "$config_file" ]]; then
+        local max_turns=$(grep "max_turns_per_conversant:" "$config_file" | sed 's/.*: *//')
+        local total_turns=$((max_turns * 2))
+        local topic=$(grep "topic:" "$config_file" | sed 's/.*topic: *"\([^"]*\)".*/\1/')
+        local alice_persona=$(grep -A1 "alice:" "$config_file" | grep "persona:" | sed 's/.*persona: *"\([^"]*\)".*/\1/' | head -c 60)
+        local bob_persona=$(grep -A1 "bob:" "$config_file" | grep "persona:" | sed 's/.*persona: *"\([^"]*\)".*/\1/' | head -c 60)
+        
+        echo "📊 Experiment Parameters:"
+        echo "   Topic: $topic"
+        echo "   Turns: $max_turns per conversant ($total_turns total)"
+        echo "   Alice: ${alice_persona}..."
+        echo "   Bob: ${bob_persona}..."
+        echo ""
+    fi
+    
     echo "💡 To monitor in real-time, open second terminal and run:"
     echo "   cd $exp_dir"
     echo "   source .ks-env"

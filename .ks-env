@@ -60,13 +60,22 @@ _setup_ks_tools() {
     fi
     
     # Save original PATH if not already saved, then prepend KS bin
-    if [[ -z "$KS_ORIGINAL_PATH" ]]; then
+    if [[ -z "${KS_ORIGINAL_PATH:-}" ]]; then
         export KS_ORIGINAL_PATH="$PATH"
     fi
     
     # Only prepend KS bin if not already in PATH
     if [[ ":$PATH:" != *":$ks_bin:"* ]]; then
         export PATH="$ks_bin:$PATH"
+    fi
+    
+    # Ensure Claude CLI is available (typically from NVM Node.js installation)
+    local claude_path=$(command -v claude 2>/dev/null)
+    if [[ -n "$claude_path" ]]; then
+        local claude_dir=$(dirname "$claude_path")
+        if [[ ":$PATH:" != *":$claude_dir:"* ]]; then
+            export PATH="$claude_dir:$PATH"
+        fi
     fi
     
     # Export KS_BASH for compatibility (though 'bash' command now works everywhere)

@@ -28,12 +28,10 @@ ks_sanitize_string() {
 ks_restore_path() {
     # Restore PATH to its original state before .ks-env modifications
     # Usage: ks_restore_path
-    if [[ -n "$KS_ORIGINAL_PATH" ]]; then
+    if [[ -n "${KS_ORIGINAL_PATH:-}" ]]; then
         export PATH="$KS_ORIGINAL_PATH"
         unset KS_ORIGINAL_PATH
-        echo "PATH restored to original state" >&2
-    else
-        echo "Warning: No original PATH saved to restore" >&2
+        # Silent restoration - no output pollution
     fi
 }
 
@@ -127,7 +125,7 @@ ks_validate_conversation_dir() {
 ks_ensure_dirs
 
 # Set up automatic PATH restoration for non-interactive scripts
-if [[ $- != *i* ]] && [[ -n "$KS_ORIGINAL_PATH" ]]; then
+if [[ $- != *i* ]] && [[ -n "${KS_ORIGINAL_PATH:-}" ]]; then
     # Non-interactive context (script) with KS PATH modifications - set up restoration
     trap 'ks_restore_path' EXIT
 fi
