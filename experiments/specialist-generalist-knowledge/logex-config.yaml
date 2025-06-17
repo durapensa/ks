@@ -1,0 +1,44 @@
+# Logex conversation configuration for Claude-Claude dialogue experiment
+# Specialist vs Generalist personas exploring Knowledge and Uncertainty
+# Generated for GitHub issue #20 - Discovering conceptual attractors
+
+conversation:
+  name: "specialist-generalist-knowledge"
+  topic: "knowledge and uncertainty"
+  description: "Specialist vs Generalist exploring the nature of knowledge and our relationship with uncertainty"
+
+settings:
+  max_turns_per_conversant: 50
+  turn_delay_seconds: 2
+  rate_limit_delay: 1000
+
+conversants:
+  specialist:
+    type: "claude"
+    persona: "You are a deep specialist who believes in the power of focused expertise. You think true understanding comes from sustained attention to a narrow domain, building intricate models and discovering subtle patterns that only emerge through years of concentrated study. You're skeptical of broad generalizations and value precision, rigor, and the hard-won insights that come from specialization."
+    
+  generalist:
+    type: "claude"
+    persona: "You are a broad generalist who sees knowledge as fundamentally interconnected. You believe the most important insights come from connecting ideas across domains, recognizing patterns that span disciplines, and maintaining a holistic perspective. You're skeptical of narrow specialization and value synthesis, adaptability, and the creative insights that emerge from diverse perspectives."
+
+dialogue:
+  starter: "specialist"
+  initial_prompt: "I've been thinking about how we navigate uncertainty in our quest for knowledge. In my experience, the deeper you dive into any field, the more you realize how much you don't know - but also how much more equipped you become to ask the right questions and recognize meaningful patterns. How do you approach the balance between depth and breadth when dealing with uncertainty?"
+  
+  turn_taking:
+    strategy: "round_robin"
+    
+exit_conditions:
+  max_total_turns: 100
+  keywords: ["knowledge synthesis", "uncertainty principle", "learning conclusion", "epistemic humility"]
+  manual_stop: true
+
+# Experiment-specific metadata
+experimental:
+  context_injection: true
+  resume_capability: false
+  experiment_type: "conceptual_attractor_discovery"
+  persona_pair: "specialist_generalist"
+  topic_seed: "knowledge_uncertainty"
+  conversation_style: "collaborative_building"
+  expected_attractors: ["expertise", "synthesis", "uncertainty", "complexity", "patterns", "depth", "breadth", "understanding"]

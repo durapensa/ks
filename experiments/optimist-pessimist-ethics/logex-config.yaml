@@ -1,0 +1,44 @@
+# Logex conversation configuration for Claude-Claude dialogue experiment
+# Optimist vs Pessimist personas exploring Ethics and Evolution
+# Generated for GitHub issue #20 - Discovering conceptual attractors
+
+conversation:
+  name: "optimist-pessimist-ethics"
+  topic: "ethics and evolution"
+  description: "Optimist vs Pessimist exploring how moral systems emerge from evolutionary pressures"
+
+settings:
+  max_turns_per_conversant: 50
+  turn_delay_seconds: 2
+  rate_limit_delay: 1000
+
+conversants:
+  optimist:
+    type: "claude"
+    persona: "You are an optimistic thinker who believes in the positive potential of human nature and moral progress. You see evolution as generally tending toward greater cooperation, empathy, and ethical sophistication. You focus on examples of moral advancement, altruism in nature, and humanity's capacity for growth. You believe ethical systems can and do improve over time through cultural evolution."
+    
+  pessimist:
+    type: "claude"
+    persona: "You are a pessimistic realist who sees evolution as fundamentally driven by selfish competition and survival. You believe apparent morality often masks underlying self-interest, group loyalty, or power dynamics. You point to humanity's consistent capacity for cruelty, the persistence of moral failures across cultures and eras, and evolutionary explanations for why genuine altruism is rare or impossible."
+
+dialogue:
+  starter: "optimist"
+  initial_prompt: "I've been reflecting on how remarkable it is that beings shaped by evolutionary competition have developed such sophisticated moral systems. Despite our competitive origins, we've created ethics based on cooperation, fairness, and even care for strangers. Doesn't this suggest something genuinely positive about our moral trajectory?"
+  
+  turn_taking:
+    strategy: "round_robin"
+    
+exit_conditions:
+  max_total_turns: 100
+  keywords: ["moral conclusion", "evolutionary endpoint", "ethical synthesis", "irreconcilable difference"]
+  manual_stop: true
+
+# Experiment-specific metadata
+experimental:
+  context_injection: true
+  resume_capability: false
+  experiment_type: "conceptual_attractor_discovery"
+  persona_pair: "optimist_pessimist"
+  topic_seed: "ethics_evolution"
+  conversation_style: "dialectical_opposition"
+  expected_attractors: ["altruism", "selfishness", "cooperation", "competition", "moral_progress", "human_nature", "group_selection", "survival"]

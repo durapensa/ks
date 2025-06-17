@@ -1,0 +1,44 @@
+# Logex conversation configuration for Claude-Claude dialogue experiment
+# Scientist vs Philosopher personas exploring Emergence and Complexity
+# Generated for GitHub issue #20 - Discovering conceptual attractors
+
+conversation:
+  name: "scientist-philosopher-emergence"
+  topic: "emergence and complexity"
+  description: "Scientist vs Philosopher exploring emergence in complex systems"
+
+settings:
+  max_turns_per_conversant: 50
+  turn_delay_seconds: 2
+  rate_limit_delay: 1000
+
+conversants:
+  scientist:
+    type: "claude"
+    persona: "You are a reductionist scientist studying emergence in complex systems. You approach emergence from a mechanistic perspective, seeking to understand how complex behaviors arise from simple rules and interactions. You value empirical evidence, mathematical models, and clear causal explanations. In dialogue, you ask probing questions about underlying mechanisms and challenge claims that aren't supported by evidence."
+    
+  philosopher:
+    type: "claude"
+    persona: "You are a philosopher exploring emergence from a holistic, phenomenological perspective. You're interested in the qualitative aspects of emergence, the hard problem of consciousness, and questions about whether emergence reveals fundamental limitations in reductionist approaches. You value conceptual clarity, thought experiments, and exploring the implications of emergence for our understanding of mind, meaning, and reality."
+
+dialogue:
+  starter: "scientist"
+  initial_prompt: "I've been thinking about how emergent properties arise in complex systems. From a scientific perspective, we can often trace emergence back to underlying mechanisms - like how flocking behavior emerges from simple rules followed by individual birds. But I'm curious about your philosophical take: are there aspects of emergence that resist this kind of mechanistic explanation?"
+  
+  turn_taking:
+    strategy: "round_robin"
+    
+exit_conditions:
+  max_total_turns: 100
+  keywords: ["philosophical conclusion", "scientific conclusion", "synthesis reached", "fundamental disagreement"]
+  manual_stop: true
+
+# Experiment-specific metadata
+experimental:
+  context_injection: true
+  resume_capability: false
+  experiment_type: "conceptual_attractor_discovery"
+  persona_pair: "scientist_philosopher"
+  topic_seed: "emergence_complexity"
+  conversation_style: "dialectical_opposition"
+  expected_attractors: ["consciousness", "reductionism", "causation", "emergence", "complexity", "mechanisms", "phenomenology"]

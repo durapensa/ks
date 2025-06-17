@@ -1,0 +1,30 @@
+# Test logex conversation configuration
+conversation:
+  name: "ksd-test-conversation"
+  topic: "testing ksd integration"
+  description: "Test conversation to verify ksd monitoring"
+
+settings:
+  max_turns_per_conversant: 3
+  turn_delay_seconds: 0
+
+conversants:
+  alice:
+    type: "claude"
+    persona: "You are Alice, testing the logex system."
+    
+  bob:
+    type: "claude"
+    persona: "You are Bob, also testing the logex system."
+
+dialogue:
+  starter: "alice"
+  initial_prompt: "Hello! Let's test this system."
+  
+  turn_taking:
+    strategy: "round_robin"
+    
+exit_conditions:
+  max_total_turns: 6
+  keywords: ["goodbye", "end test"]
+  manual_stop: true

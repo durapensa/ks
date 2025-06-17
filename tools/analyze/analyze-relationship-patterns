@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+
+# analyze-relationship-patterns - Find emergent relationship patterns that strengthen over dialogue rounds
+
+set -euo pipefail
+
+# Source configuration and modular libraries
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
+
+# Standardized usage function
+usage() {
+    declare -a arguments=(
+        "EXPERIMENT_NAME          Name of dialogue experiment to analyze"
+    )
+    declare -a examples=(
+        "analyze-relationship-patterns scientist-philosopher-emergence  # Analyze relationship patterns"
+        "analyze-relationship-patterns --min-occurrences 3 my-experiment # Require at least 3 occurrences"
+        "analyze-relationship-patterns --format json my-experiment       # Output as JSON"
+    )
+    ks_generate_usage \
+        "Find emergent relationship patterns that strengthen over dialogue rounds" \
+        "analyze-relationship-patterns" \
+        "[options] EXPERIMENT_NAME" \
+        "ANALYZE" \
+        arguments \
+        examples
+}
+
+# Parse arguments using category-based system
+ks_parse_category_args "ANALYZE" -- "$@"
+
+# Get experiment name from remaining arguments
+EXPERIMENT_NAME="${REMAINING_ARGS[0]:-}"
+if [[ -z "$EXPERIMENT_NAME" ]]; then
+    ks_exit_usage "Experiment name required"
+fi
+
+# Validate experiment exists
+EXPERIMENT_DIR="$KS_EXPERIMENTS_DIR/$EXPERIMENT_NAME"
+if [[ ! -d "$EXPERIMENT_DIR" ]]; then
+    ks_exit_error "Experiment directory not found: $EXPERIMENT_DIR"
+fi
+
+# Check if knowledge graph exists
+KG_DB="$EXPERIMENT_DIR/knowledge/kg.db"
+if [[ ! -f "$KG_DB" ]]; then
+    ks_exit_error "Knowledge graph database not found: $KG_DB. Run distillation first."
+fi
+
+# Set default minimum occurrences
+MIN_OCCURRENCES="${MIN_OCCURRENCES:-2}"
+
+# Analysis functions
+
+analyze_patterns() {
+    local kg_db="$1"
+    local min_occurrences="$2"
+    
+    # SQL query to find relationships that strengthen over time
+    # This implements the "Emergent Relationship Patterns" query from issue #20
+    local query="
+    WITH experiment_timerange AS (
+        SELECT 
+            MIN(c.created) as experiment_start,
+            MAX(c.created) as experiment_end
+        FROM concepts c
+        WHERE c.source_ref IN (
+            SELECT event_id FROM event_metadata 
+            WHERE key = 'experiment_name' AND value = '$EXPERIMENT_NAME'
+        )
+    )
+    SELECT 
+        c1.name as concept_a, 
+        c2.name as concept_b,
+        e.edge_type,
+        COUNT(*) as occurrence_count,
+        AVG(e.strength) as avg_strength,
+        MIN(e.strength) as min_strength,
+        MAX(e.strength) as max_strength,
+        (MAX(e.strength) - MIN(e.strength)) as strength_growth,
+        MIN(e.created) as first_occurrence,
+        MAX(e.created) as last_occurrence,
+        COUNT(DISTINCT DATE(e.created)) as days_active,
+        GROUP_CONCAT(DISTINCT e.strength ORDER BY e.created) as strength_evolution
+    FROM edges e
+    JOIN concepts c1 ON e.source_id = c1.id
+    JOIN concepts c2 ON e.target_id = c2.id
+    CROSS JOIN experiment_timerange et
+    WHERE e.created BETWEEN et.experiment_start AND et.experiment_end
+    GROUP BY c1.id, c2.id, e.edge_type
+    HAVING occurrence_count >= $min_occurrences 
+       AND strength_growth > 0
+    ORDER BY strength_growth DESC, occurrence_count DESC
+    LIMIT 50;
+    "
+    
+    if [[ -n "$VERBOSE" ]]; then
+        echo "Executing relationship pattern analysis..."
+        echo "Minimum occurrences required: $min_occurrences"
+    fi
+    
+    # Execute query
+    sqlite3 "$kg_db" "$query"
+}
+
+format_output() {
+    local format="${FORMAT:-table}"
+    
+    case "$format" in
+        "json")
+            # Convert pipe-separated output to JSON
+            awk -F'|' 'BEGIN { print "[" } 
+            NR > 1 { 
+                if (NR > 2) print ",";
+                printf "  {\"concept_a\": \"%s\", \"concept_b\": \"%s\", \"edge_type\": \"%s\", \"occurrence_count\": %d, \"avg_strength\": %.3f, \"min_strength\": %.3f, \"max_strength\": %.3f, \"strength_growth\": %.3f, \"first_occurrence\": \"%s\", \"last_occurrence\": \"%s\", \"days_active\": %d, \"strength_evolution\": \"%s\"}", 
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+            } 
+            END { print "\n]" }'
+            ;;
+        "csv")
+            # Convert to CSV format
+            sed 's/|/,/g'
+            ;;
+        "table"|*)
+            # Default table format with headers
+            {
+                echo "CONCEPT_A|CONCEPT_B|TYPE|COUNT|AVG_STR|MIN_STR|MAX_STR|GROWTH|FIRST|LAST|DAYS|EVOLUTION"
+                echo "---------|---------|----|----|-------|-------|-------|------|-----|----|----|----------"
+                cat
+            } | column -t -s '|'
+            ;;
+    esac
+}
+
+# Additional analysis: relationship type distribution
+analyze_edge_types() {
+    local kg_db="$1"
+    
+    # Query to show distribution of edge types in the experiment
+    local query="
+    WITH experiment_timerange AS (
+        SELECT 
+            MIN(c.created) as experiment_start,
+            MAX(c.created) as experiment_end
+        FROM concepts c
+        WHERE c.source_ref IN (
+            SELECT event_id FROM event_metadata 
+            WHERE key = 'experiment_name' AND value = '$EXPERIMENT_NAME'
+        )
+    )
+    SELECT 
+        e.edge_type,
+        COUNT(*) as total_edges,
+        AVG(e.strength) as avg_strength,
+        COUNT(DISTINCT e.source_id) as unique_sources,
+        COUNT(DISTINCT e.target_id) as unique_targets
+    FROM edges e
+    CROSS JOIN experiment_timerange et
+    WHERE e.created BETWEEN et.experiment_start AND et.experiment_end
+    GROUP BY e.edge_type
+    ORDER BY total_edges DESC;
+    "
+    
+    echo
+    echo "=== Relationship Type Distribution ==="
+    echo "TYPE|TOTAL|AVG_STRENGTH|SOURCES|TARGETS"
+    echo "----|-----|-----------|-------|-------"
+    sqlite3 "$kg_db" "$query" | column -t -s '|'
+}
+
+# Main execution
+main() {
+    if [[ -n "$STATUS" ]]; then
+        echo "Relationship pattern analysis: operational"
+        echo "Available experiments:"
+        if [[ -d "$KS_EXPERIMENTS_DIR" ]]; then
+            find "$KS_EXPERIMENTS_DIR" -name "logex-config.yaml" -exec dirname {} \; | xargs -I {} basename {} | sort
+        fi
+        exit 0
+    fi
+    
+    if [[ -n "$DRY_RUN" ]]; then
+        echo "Would analyze experiment: $EXPERIMENT_NAME"
+        echo "Would find relationship patterns with min_occurrences >= $MIN_OCCURRENCES"
+        echo "Would format output as: ${FORMAT:-table}"
+        exit 0
+    fi
+    
+    # Analyze and format patterns
+    analyze_patterns "$KG_DB" "$MIN_OCCURRENCES" | format_output
+    
+    # Show additional analysis if verbose
+    if [[ -n "$VERBOSE" ]]; then
+        analyze_edge_types "$KG_DB"
+        echo
+        echo "Analysis complete. Relationships showing strength growth over time are displayed."
+        echo "These patterns suggest concepts that become more strongly connected as the dialogue progresses."
+        echo "Strength growth indicates emergent conceptual relationships discovered through conversation."
+    fi
+}
+
+main "$@"

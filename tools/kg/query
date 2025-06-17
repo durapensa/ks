@@ -26,10 +26,12 @@ usage() {
         "concepts|c|List all concepts|BOOL"
         "edges|e|List all relationships|BOOL"
         "sql|q|Execute raw SQL query|STRING"
+        "experiment|x|Show experiment-specific analysis|STRING"
     )
     declare -a examples=(
         "query --stats                    # Show database statistics"
         "query --concepts                 # List all concepts"
+        "query --experiment my-experiment # Show experiment analysis"
         "query --sql \"SELECT * FROM concepts ORDER BY weight DESC LIMIT 5\""
     )
     ks_generate_usage \
@@ -46,6 +48,7 @@ STATS="false"
 CONCEPTS="false"
 EDGES="false"
 SQL_QUERY=""
+EXPERIMENT=""
 FILTERED_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -64,6 +67,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --sql|-q)
             SQL_QUERY="${2:-}"
+            shift 2
+            ;;
+        --experiment|-x)
+            EXPERIMENT="${2:-}"
             shift 2
             ;;
         *)
@@ -174,8 +181,89 @@ if [[ -n "$SQL_QUERY" ]]; then
     sqlite3 "$KG_DB" -column -header "$SQL_QUERY"
 fi
 
+if [[ -n "$EXPERIMENT" ]]; then
+    echo "Experiment Analysis: $EXPERIMENT"
+    echo "================================="
+    
+    # Check if experiment data exists
+    EXPERIMENT_CONCEPTS=$(sqlite3 "$KG_DB" "
+        SELECT COUNT(*) FROM concepts c
+        WHERE c.source_ref IN (
+            SELECT event_id FROM event_metadata 
+            WHERE key = 'experiment_name' AND value = '$EXPERIMENT'
+        )
+    ")
+    
+    if [[ "$EXPERIMENT_CONCEPTS" -eq 0 ]]; then
+        echo "No data found for experiment: $EXPERIMENT"
+        echo "Make sure the experiment has been run and distilled into the knowledge graph."
+        exit 0
+    fi
+    
+    echo "Concepts extracted: $EXPERIMENT_CONCEPTS"
+    echo
+    
+    # Show experiment timeline
+    echo "Experiment Timeline:"
+    sqlite3 "$KG_DB" -column -header "
+        SELECT 
+            DATE(MIN(c.created)) as start_date,
+            DATE(MAX(c.created)) as end_date,
+            COUNT(DISTINCT DATE(c.created)) as active_days
+        FROM concepts c
+        WHERE c.source_ref IN (
+            SELECT event_id FROM event_metadata 
+            WHERE key = 'experiment_name' AND value = '$EXPERIMENT'
+        )
+    "
+    
+    echo
+    echo "Top Concepts by Weight:"
+    sqlite3 "$KG_DB" -column -header "
+        SELECT 
+            c.name,
+            printf('%.2f', c.weight) as weight,
+            c.created
+        FROM concepts c
+        WHERE c.source_ref IN (
+            SELECT event_id FROM event_metadata 
+            WHERE key = 'experiment_name' AND value = '$EXPERIMENT'
+        )
+        ORDER BY c.weight DESC
+        LIMIT 10
+    "
+    
+    echo
+    echo "Relationship Types Distribution:"
+    sqlite3 "$KG_DB" -column -header "
+        SELECT 
+            e.edge_type,
+            COUNT(*) as count,
+            printf('%.2f', AVG(e.strength)) as avg_strength
+        FROM edges e
+        JOIN concepts c1 ON e.source_id = c1.id
+        JOIN concepts c2 ON e.target_id = c2.id
+        WHERE c1.source_ref IN (
+            SELECT event_id FROM event_metadata 
+            WHERE key = 'experiment_name' AND value = '$EXPERIMENT'
+        )
+        OR c2.source_ref IN (
+            SELECT event_id FROM event_metadata 
+            WHERE key = 'experiment_name' AND value = '$EXPERIMENT'
+        )
+        GROUP BY e.edge_type
+        ORDER BY count DESC
+    "
+    
+    echo
+    echo "Use the specialized analysis tools for deeper insights:"
+    echo "  ks extract-conceptual-attractors $EXPERIMENT"
+    echo "  ks identify-conversation-flows $EXPERIMENT"
+    echo "  ks analyze-relationship-patterns $EXPERIMENT"
+fi
+
 # If no specific query, show basic stats
-if [[ "$STATS" == "false" && "$CONCEPTS" == "false" && "$EDGES" == "false" && -z "$SQL_QUERY" ]]; then
+if [[ "$STATS" == "false" && "$CONCEPTS" == "false" && "$EDGES" == "false" && -z "$SQL_QUERY" && -z "$EXPERIMENT" ]]; then
     echo "Knowledge Graph Overview"
     echo "======================"
     echo "Database: $KG_DB"

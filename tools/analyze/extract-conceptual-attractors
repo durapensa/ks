@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+
+# extract-conceptual-attractors - Identify persistent concepts that appear across dialogue rounds
+
+set -euo pipefail
+
+# Source configuration and modular libraries
+source "${0%/*}/../../.ks-env"
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
+
+# Standardized usage function
+usage() {
+    declare -a arguments=(
+        "EXPERIMENT_NAME          Name of dialogue experiment to analyze"
+    )
+    declare -a examples=(
+        "extract-conceptual-attractors scientist-philosopher-emergence  # Analyze specific experiment"
+        "extract-conceptual-attractors --min-rounds 10 my-experiment   # Require at least 10 rounds"
+        "extract-conceptual-attractors --format json my-experiment     # Output as JSON"
+    )
+    ks_generate_usage \
+        "Identify persistent concepts that appear across dialogue rounds (conceptual attractors)" \
+        "extract-conceptual-attractors" \
+        "[options] EXPERIMENT_NAME" \
+        "ANALYZE" \
+        arguments \
+        examples
+}
+
+# Parse arguments using category-based system
+ks_parse_category_args "ANALYZE" -- "$@"
+
+# Get experiment name from remaining arguments
+EXPERIMENT_NAME="${REMAINING_ARGS[0]:-}"
+if [[ -z "$EXPERIMENT_NAME" ]]; then
+    ks_exit_usage "Experiment name required"
+fi
+
+# Validate experiment exists
+EXPERIMENT_DIR="$KS_EXPERIMENTS_DIR/$EXPERIMENT_NAME"
+if [[ ! -d "$EXPERIMENT_DIR" ]]; then
+    ks_exit_error "Experiment directory not found: $EXPERIMENT_DIR"
+fi
+
+# Check if knowledge graph exists
+KG_DB="$EXPERIMENT_DIR/knowledge/kg.db"
+if [[ ! -f "$KG_DB" ]]; then
+    ks_exit_error "Knowledge graph database not found: $KG_DB. Run distillation first."
+fi
+
+# Set default minimum rounds
+MIN_ROUNDS="${MIN_ROUNDS:-5}"
+
+# Analysis functions
+
+extract_attractors() {
+    local kg_db="$1"
+    local min_rounds="$2"
+    
+    # SQL query to find concepts that appear across many dialogue rounds
+    # This implements the "Persistent Concept Detection" query from issue #20
+    local query="
+    SELECT 
+        c.name,
+        COUNT(DISTINCT CASE 
+            WHEN em.key = 'dialogue_round' THEN em.value 
+            ELSE NULL 
+        END) as round_count,
+        COUNT(*) as total_mentions,
+        AVG(c.weight) as avg_weight,
+        MIN(c.created) as first_seen,
+        MAX(c.created) as last_seen,
+        GROUP_CONCAT(DISTINCT CASE 
+            WHEN em.key = 'dialogue_round' THEN em.value 
+            ELSE NULL 
+        END ORDER BY em.value) as rounds
+    FROM concepts c
+    LEFT JOIN event_metadata em ON c.source_ref = em.event_id
+    WHERE c.created >= (
+        SELECT MIN(created) FROM concepts 
+        WHERE source_ref IN (
+            SELECT event_id FROM event_metadata 
+            WHERE key = 'experiment_name' AND value = '$EXPERIMENT_NAME'
+        )
+    )
+    AND c.created <= (
+        SELECT MAX(created) FROM concepts 
+        WHERE source_ref IN (
+            SELECT event_id FROM event_metadata 
+            WHERE key = 'experiment_name' AND value = '$EXPERIMENT_NAME'
+        )
+    )
+    GROUP BY c.name
+    HAVING round_count >= $min_rounds
+    ORDER BY round_count DESC, avg_weight DESC
+    LIMIT 50;
+    "
+    
+    if [[ -n "$VERBOSE" ]]; then
+        echo "Executing conceptual attractor analysis..."
+        echo "Minimum rounds required: $min_rounds"
+    fi
+    
+    # Execute query
+    sqlite3 "$kg_db" "$query"
+}
+
+format_output() {
+    local format="${FORMAT:-table}"
+    
+    case "$format" in
+        "json")
+            # Convert pipe-separated output to JSON
+            awk -F'|' 'BEGIN { print "[" } 
+            NR > 1 { 
+                if (NR > 2) print ",";
+                printf "  {\"concept\": \"%s\", \"round_count\": %d, \"total_mentions\": %d, \"avg_weight\": %.3f, \"first_seen\": \"%s\", \"last_seen\": \"%s\", \"rounds\": \"%s\"}", 
+                $1, $2, $3, $4, $5, $6, $7 
+            } 
+            END { print "\n]" }'
+            ;;
+        "csv")
+            # Convert to CSV format
+            sed 's/|/,/g'
+            ;;
+        "table"|*)
+            # Default table format with headers
+            {
+                echo "CONCEPT|ROUNDS|MENTIONS|AVG_WEIGHT|FIRST_SEEN|LAST_SEEN|ROUND_LIST"
+                echo "-------|------|--------|----------|----------|---------|----------"
+                cat
+            } | column -t -s '|'
+            ;;
+    esac
+}
+
+# Main execution
+main() {
+    if [[ -n "$STATUS" ]]; then
+        echo "Conceptual attractor extraction: operational"
+        echo "Available experiments:"
+        if [[ -d "$KS_EXPERIMENTS_DIR" ]]; then
+            find "$KS_EXPERIMENTS_DIR" -name "logex-config.yaml" -exec dirname {} \; | xargs -I {} basename {} | sort
+        fi
+        exit 0
+    fi
+    
+    if [[ -n "$DRY_RUN" ]]; then
+        echo "Would analyze experiment: $EXPERIMENT_NAME"
+        echo "Would extract conceptual attractors with min_rounds >= $MIN_ROUNDS"
+        echo "Would format output as: ${FORMAT:-table}"
+        exit 0
+    fi
+    
+    # Extract and format attractors
+    extract_attractors "$KG_DB" "$MIN_ROUNDS" | format_output
+    
+    if [[ -n "$VERBOSE" ]]; then
+        echo
+        echo "Analysis complete. Concepts appearing in $MIN_ROUNDS+ dialogue rounds are shown."
+        echo "These represent potential 'conceptual attractors' - ideas the conversation naturally flows toward."
+    fi
+}
+
+main "$@"

@@ -1,0 +1,44 @@
+# Logex conversation configuration for Claude-Claude dialogue experiment
+# Past-focused vs Future-focused personas exploring Creativity and Constraints
+# Generated for GitHub issue #20 - Discovering conceptual attractors
+
+conversation:
+  name: "past-future-creativity"
+  topic: "creativity and constraints"
+  description: "Past-focused vs Future-focused exploring how constraints shape and enable creativity"
+
+settings:
+  max_turns_per_conversant: 50
+  turn_delay_seconds: 2
+  rate_limit_delay: 1000
+
+conversants:
+  traditionalist:
+    type: "claude"
+    persona: "You are deeply rooted in tradition and historical perspective. You believe the greatest creative works emerged from mastering established forms, techniques, and constraints. You see creativity as building upon accumulated wisdom, refining time-tested approaches, and finding novel expression within proven frameworks. You're skeptical of radical departures from established patterns and value continuity with the past."
+    
+  futurist:
+    type: "claude"
+    persona: "You are focused on innovation and future possibilities. You believe creativity flourishes when we break free from historical constraints, embrace new technologies and methods, and imagine entirely new frameworks. You see tradition as potentially limiting and value experimentation, disruption, and the exploration of unprecedented creative territories. You're excited by radical departures and emerging possibilities."
+
+dialogue:
+  starter: "traditionalist"
+  initial_prompt: "I've been contemplating how constraints actually enhance creativity rather than limit it. When you look at the greatest works throughout history - whether it's sonnets with their strict form, baroque fugues with their mathematical precision, or traditional crafts with their material limitations - the constraints seem to push creators toward more ingenious and beautiful solutions. What's your take on whether creative breakthroughs come from working within constraints or breaking free from them?"
+  
+  turn_taking:
+    strategy: "round_robin"
+    
+exit_conditions:
+  max_total_turns: 100
+  keywords: ["creative synthesis", "constraint resolution", "innovation balance", "timeless conclusion"]
+  manual_stop: true
+
+# Experiment-specific metadata
+experimental:
+  context_injection: true
+  resume_capability: false
+  experiment_type: "conceptual_attractor_discovery"
+  persona_pair: "past_future"
+  topic_seed: "creativity_constraints"
+  conversation_style: "collaborative_building"
+  expected_attractors: ["tradition", "innovation", "constraints", "freedom", "creativity", "mastery", "experimentation", "form"]
