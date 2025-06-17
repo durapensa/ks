@@ -45,8 +45,9 @@ ks_validate_days() {
 
 ks_create_conversation_dirs() {
     # Create conversation directory structure
-    # Usage: ks_create_conversation_dirs "$CONVERSATION_NAME"
+    # Usage: ks_create_conversation_dirs "$CONVERSATION_NAME" ["$BASE_DIR"]
     local conversation_name="$1"
+    local base_dir="${2:-}"
     
     if [[ -z "$conversation_name" ]]; then
         echo "Error: conversation name required" >&2
@@ -57,15 +58,30 @@ ks_create_conversation_dirs() {
     local safe_name
     safe_name=$(ks_sanitize_string "$conversation_name")
     
-    # Create directory structure
-    mkdir -p "$safe_name"/{knowledge,conversants,supervise}
-    
-    # Create tools symlink back to ks project
-    if [[ -n "${KS_ROOT:-}" && -d "$KS_ROOT/tools" ]]; then
-        ln -sf "$KS_ROOT/tools" "$safe_name/tools"
+    # Determine full path
+    local full_path
+    if [[ -n "$base_dir" ]]; then
+        full_path="$base_dir/$safe_name"
+    else
+        full_path="$safe_name"
     fi
     
-    echo "$safe_name"
+    # Create unified directory structure for ksd monitoring
+    mkdir -p "$full_path/$KS_CONVERSATION_EVENTS_DIR"
+    mkdir -p "$full_path/conversants"
+    mkdir -p "$full_path/supervise"
+    
+    # Create symlinks back to ks project
+    if [[ -n "${KS_ROOT:-}" ]]; then
+        if [[ -d "$KS_ROOT/tools" ]]; then
+            ln -sf "$KS_ROOT/tools" "$full_path/tools"
+        fi
+        if [[ -f "$KS_ROOT/.ks-env" ]]; then
+            ln -sf "$KS_ROOT/.ks-env" "$full_path/.ks-env"
+        fi
+    fi
+    
+    echo "$full_path"
 }
 
 ks_validate_conversation_dir() {
@@ -79,12 +95,18 @@ ks_validate_conversation_dir() {
     fi
     
     # Check for required subdirectories
-    for subdir in knowledge conversants supervise; do
+    for subdir in conversants supervise; do
         if [[ ! -d "$conversation_name/$subdir" ]]; then
             echo "Error: missing required directory '$conversation_name/$subdir'" >&2
             return 1
         fi
     done
+    
+    # Check for unified knowledge structure
+    if [[ ! -d "$conversation_name/$KS_CONVERSATION_EVENTS_DIR" ]]; then
+        echo "Error: missing required directory '$conversation_name/$KS_CONVERSATION_EVENTS_DIR'" >&2
+        return 1
+    fi
     
     return 0
 }

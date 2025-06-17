@@ -110,7 +110,13 @@ record_conversant_event() {
     escaped_content=$(printf '%s' "$content" | jq -Rs .)
     
     local event_json="{\"timestamp\":\"$timestamp\",\"type\":\"$event_type\",\"conversant\":\"$CONVERSANT_NAME\",\"content\":$escaped_content}"
+    
+    # Write to individual conversant file for detailed logging
     echo "$event_json" >> "$JSONL_FILE"
+    
+    # Also write to unified hot.jsonl for ksd monitoring
+    local hot_log_path="$CONVERSATION_DIR/$KS_CONVERSATION_HOT_LOG"
+    echo "$event_json" >> "$hot_log_path"
 }
 
 # Claude CLI interaction

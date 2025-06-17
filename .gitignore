@@ -1,4 +1,5 @@
 knowledge/
+experiments/
 *.log
 .DS_Store
 .env

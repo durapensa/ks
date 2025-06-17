@@ -173,11 +173,11 @@ main() {
         conversation_name=$(prompt_input "Conversation name" "my-dialogue")
     fi
     
-    # Sanitize and create directory
+    # Create conversation directory structure in experiments
     local safe_name
-    safe_name=$(ks_create_conversation_dirs "$conversation_name")
+    safe_name=$(ks_create_conversation_dirs "$conversation_name" "$KS_EXPERIMENTS_DIR")
     
-    local config_file="$safe_name/logex-config.yaml"
+    local config_file="$safe_name/$KS_CONVERSATION_CONFIG"
     
     # Check if config already exists
     if [[ -f "$config_file" && -z "$FORCE" ]]; then

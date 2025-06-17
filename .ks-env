@@ -3,6 +3,47 @@
 # Source this file in all tools: source "${0%/*}/../../.ks-env"
 # Then source needed libraries directly: source "$KS_ROOT/lib/core.sh"
 
+# === BASH 5.x SETUP (using old-bash compatible syntax) ===
+# Ensure we have bash 5.x available before setting up anything else
+
+_setup_bash() {
+    # Check if bash 5.x is already available at expected location
+    if [ -x "/opt/homebrew/bin/bash" ]; then
+        local bash_version=$(/opt/homebrew/bin/bash --version | head -1 | grep -o '[0-9]\+' | head -1)
+        if [ "$bash_version" -ge 5 ]; then
+            export KS_BASH="/opt/homebrew/bin/bash"
+            return 0
+        fi
+    fi
+    
+    # Check if homebrew is available
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "Warning: Homebrew not found. KS requires bash 5.x from Homebrew." >&2
+        echo "Install Homebrew: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" >&2
+        export KS_BASH="bash"  # fallback for now
+        return 1
+    fi
+    
+    # Check if bash package is installed
+    if ! brew list bash >/dev/null 2>&1; then
+        echo "Installing bash 5.x via Homebrew..." >&2
+        brew install bash
+    fi
+    
+    # Verify installation
+    if [ -x "/opt/homebrew/bin/bash" ]; then
+        export KS_BASH="/opt/homebrew/bin/bash"
+        echo "KS_BASH set to: $KS_BASH" >&2
+    else
+        echo "Error: Failed to install bash 5.x" >&2
+        export KS_BASH="bash"  # fallback
+        return 1
+    fi
+}
+
+# Run bash setup first
+_setup_bash
+
 # Base directories
 export KS_ROOT="${KS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 export KS_KNOWLEDGE_DIR="${KS_KNOWLEDGE_DIR:-$KS_ROOT/knowledge}"
@@ -20,8 +61,18 @@ export KS_ANALYSIS_QUEUE="$KS_BACKGROUND_DIR/analysis_queue.json"
 # Claude model for analysis tools
 export KS_MODEL="${KS_MODEL:-sonnet}"
 
+# Experimental conversations (gitignored)
+export KS_EXPERIMENTS_DIR="$KS_ROOT/experiments"
+
+# Logex conversation structure (for active conversation)
+export KS_CONVERSATION_CONFIG="logex-config.yaml"
+export KS_CONVERSATION_KNOWLEDGE_DIR="knowledge"
+export KS_CONVERSATION_EVENTS_DIR="$KS_CONVERSATION_KNOWLEDGE_DIR/events"
+export KS_CONVERSATION_HOT_LOG="$KS_CONVERSATION_EVENTS_DIR/hot.jsonl"
+
 # Platform-specific command mappings
 # Use GNU tools explicitly to avoid PATH manipulation and ensure consistent behavior
+# Note: KS_BASH is set by _setup_bash() above
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS with Homebrew GNU tools (g-prefixed to avoid shadowing system commands)
     export KS_DATE="gdate"

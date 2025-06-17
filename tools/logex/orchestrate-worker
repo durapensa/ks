@@ -148,9 +148,9 @@ record_conversation_event() {
     local timestamp
     timestamp=$(ks_timestamp)
     
-    # Record to main knowledge log
+    # Record to main knowledge log (unified hot.jsonl for ksd monitoring)
     local event_json="{\"timestamp\":\"$timestamp\",\"type\":\"$event_type\",\"details\":\"$details\",\"turn\":$TOTAL_TURNS,\"speaker\":\"$CURRENT_SPEAKER\"}"
-    echo "$event_json" >> "$CONVERSATION_DIR/knowledge/conversation.jsonl"
+    echo "$event_json" >> "$CONVERSATION_DIR/$KS_CONVERSATION_HOT_LOG"
     
     log_debug "Event recorded: $event_type - $details"
 }
