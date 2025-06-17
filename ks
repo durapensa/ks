@@ -99,6 +99,7 @@ show_claude_help() {
     echo ""
     for tool in events query extract-themes find-connections extract-concepts; do
         if [[ -n "${TOOL_MAP[$tool]:-}" ]]; then
+            echo "${TOOL_MAP[$tool]} --help"
             "${TOOL_MAP[$tool]}" --help
             echo ""
         fi

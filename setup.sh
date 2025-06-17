@@ -64,15 +64,15 @@ check_dependencies() {
     
     # Check for required dependencies
     command -v jq >/dev/null 2>&1 || missing_deps+=("jq")
-    command -v gum >/dev/null 2>&1 || missing_deps+=("gum")
     command -v claude >/dev/null 2>&1 || missing_deps+=("claude")
     command -v python3 >/dev/null 2>&1 || missing_deps+=("python3")
     
-    # Additional bash tools for cleaner scripts
+    # Additional tools for enhanced functionality
     command -v sd >/dev/null 2>&1 || missing_deps+=("sd")
     command -v rg >/dev/null 2>&1 || missing_deps+=("ripgrep")
     command -v parallel >/dev/null 2>&1 || missing_deps+=("parallel")
-    command -v watchexec >/dev/null 2>&1 || missing_deps+=("watchexec")
+    command -v fx >/dev/null 2>&1 || missing_deps+=("fx")
+    command -v bats >/dev/null 2>&1 || missing_deps+=("bats-core")
     
     # GNU tools for macOS compatibility 
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -166,12 +166,11 @@ check_dependencies() {
             echo ""
             echo "For Ubuntu/Debian:"
             echo "  sudo apt-get update"
-            echo "  sudo apt-get install jq python3 flock coreutils moreutils ripgrep"
+            echo "  sudo apt-get install jq python3 util-linux coreutils ripgrep parallel"
             echo "  # For newer tools not in apt, use alternative methods:"
             echo "  # sd: cargo install sd"
-            echo "  # parallel: sudo apt-get install parallel"
-            echo "  # watchexec: cargo install watchexec-cli"
-            echo "  # gum: see https://github.com/charmbracelet/gum#installation"
+            echo "  # fx: npm install -g fx"
+            echo "  # bats-core: git clone https://github.com/bats-core/bats-core.git && cd bats-core && sudo ./install.sh /usr/local"
             echo ""
             echo "Notes:"
             echo "  - Install Claude CLI separately from https://claude.ai/cli"

@@ -11,13 +11,12 @@ build:
 	@go build -o bin/ksd ./cmd/ksd
 	@echo "Built to go/bin/"
 
-# Install ksd to project root (replacing bash version)
+# Install ksd to project root
 install-ksd:
-	@echo "Installing new TUI ksd..."
+	@echo "Installing TUI ksd..."
 	@go build -o bin/ksd ./cmd/ksd
-	@cp ../ksd ../ksd-legacy
 	@cp bin/ksd ../ksd
-	@echo "New TUI ksd installed (legacy version saved as ksd-legacy)"
+	@echo "TUI ksd installed"
 
 # Run tests
 test:
