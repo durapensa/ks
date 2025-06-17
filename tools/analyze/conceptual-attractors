@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+
+# conceptual-attractors - Extract persistent concepts that appear across dialogue rounds
+
+set -euo pipefail
+
+# Source libraries
+source "$(dirname "${BASH_SOURCE[0]}")/../.ks-env" || exit 1
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
+
+# Parse arguments for ANALYZE category
+ks_parse_category_args "ANALYZE" -- "$@"
+
+usage() {
+    ks_generate_usage "Extract persistent concepts across dialogue rounds" \
+        "conceptual-attractors EXPERIMENT_NAME" \
+        "Analyzes conversation knowledge graph to find concepts that appear consistently across multiple dialogue rounds." \
+        "" \
+        "EXPERIMENT_NAME    Name of experiment directory in \$KS_EXPERIMENTS_DIR" \
+        "" \
+        "  --min-rounds NUM     Minimum rounds a concept must appear in (default: 3)" \
+        "  --format FORMAT      Output format: table, json, csv (default: table)" \
+        "  --limit NUM          Maximum concepts to return (default: 20)" \
+        "" \
+        "Examples:" \
+        "  conceptual-attractors concept-formation-test" \
+        "  conceptual-attractors knowledge-transfer-test --format json --min-rounds 5"
+}
+
+# Parse remaining arguments
+if [[ ${#REMAINING_ARGS[@]} -lt 1 ]]; then
+    ks_exit_usage "Missing required argument: EXPERIMENT_NAME"
+fi
+
+EXPERIMENT_NAME="${REMAINING_ARGS[0]}"
+MIN_ROUNDS="${ANALYZE_MIN_ROUNDS:-3}"
+OUTPUT_FORMAT="${ANALYZE_FORMAT:-table}"
+RESULT_LIMIT="${ANALYZE_LIMIT:-20}"
+
+# Validate experiment directory
+EXPERIMENT_DIR="$KS_EXPERIMENTS_DIR/$EXPERIMENT_NAME"
+if [[ ! -d "$EXPERIMENT_DIR" ]]; then
+    ks_exit_error "Experiment directory not found: $EXPERIMENT_DIR"
+fi
+
+KG_DB="$EXPERIMENT_DIR/$KS_CONVERSATION_KNOWLEDGE_DIR/concepts.db"
+if [[ ! -f "$KG_DB" ]]; then
+    ks_exit_error "Knowledge graph database not found. Run 'ks kg run-distillation' first."
+fi
+
+# Execute analysis query
+QUERY="
+SELECT 
+    c.concept_name,
+    COUNT(DISTINCT CAST(json_extract(e.event_data, '$.round_number') AS INTEGER)) as rounds_mentioned,
+    COUNT(*) as total_mentions,
+    ROUND(AVG(c.weight), 3) as avg_weight,
+    ROUND(MAX(c.weight), 3) as max_weight,
+    MIN(CAST(json_extract(e.event_data, '$.round_number') AS INTEGER)) as first_round,
+    MAX(CAST(json_extract(e.event_data, '$.round_number') AS INTEGER)) as last_round
+FROM concepts c
+JOIN events e ON c.source_event_id = e.id
+WHERE json_extract(e.event_data, '$.round_number') IS NOT NULL
+GROUP BY c.concept_name
+HAVING rounds_mentioned >= $MIN_ROUNDS
+ORDER BY rounds_mentioned DESC, avg_weight DESC
+LIMIT $RESULT_LIMIT;
+"
+
+case "$OUTPUT_FORMAT" in
+    "json")
+        sqlite3 -json "$KG_DB" "$QUERY"
+        ;;
+    "csv")
+        sqlite3 -csv -header "$KG_DB" "$QUERY"
+        ;;
+    "table"|*)
+        echo "Conceptual Attractors Analysis: $EXPERIMENT_NAME"
+        echo "Minimum rounds threshold: $MIN_ROUNDS"
+        echo ""
+        sqlite3 -header -column "$KG_DB" "$QUERY"
+        ;;
+esac
+
+if [[ "$ANALYZE_VERBOSE" == "true" ]]; then
+    echo ""
+    echo "Analysis Insights:"
+    echo "• Concepts appearing in ≥$MIN_ROUNDS rounds are considered persistent attractors"
+    echo "• High avg_weight indicates strong conceptual importance during dialogue"
+    echo "• Large round span (last_round - first_round) suggests sustained engagement"
+    echo "• Multiple mentions per round indicate recurring importance"
+fi

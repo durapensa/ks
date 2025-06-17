@@ -26,7 +26,7 @@ export TEST_ROOT=$(dirname "$0")
 echo
 echo "Mocked API Tests:"
 echo "-----------------"
-if [ -d "$TEST_ROOT/mocked" ] && [ -n "$($KS_FIND "$TEST_ROOT/mocked" -name "*.bats" 2>/dev/null)" ]; then
+if [ -d "$TEST_ROOT/mocked" ] && [ -n "$(find "$TEST_ROOT/mocked" -name "*.bats" 2>/dev/null)" ]; then
     bats "$TEST_ROOT"/mocked/*.bats
 else
     echo "No mocked tests found in $TEST_ROOT/mocked/"

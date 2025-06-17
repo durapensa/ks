@@ -148,7 +148,7 @@ generate_parser() {
     
     echo ""
     echo "# Parse options with getopt (dummy -o h required for long options)"
-    echo "OPTS=\$(\$KS_GETOPT -o h -l \"\$LONG_OPTS\" -- \"\$@\") || ks_exit_usage \"Invalid options provided\""
+    echo "OPTS=\$(getopt -o h -l \"\$LONG_OPTS\" -- \"\$@\") || ks_exit_usage \"Invalid options provided\""
     echo "eval set -- \"\$OPTS\""
     echo ""
     echo "# Process options"

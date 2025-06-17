@@ -5,14 +5,14 @@
 # Usage: date=$(ks_days_to_date 7)
 ks_days_to_date() {
     local days="$1"
-    $KS_DATE -u -d "${days} days ago" +%Y-%m-%dT%H:%M:%SZ
+    date -u -d "${days} days ago" +%Y-%m-%dT%H:%M:%SZ
 }
 
 # Validate ISO date format
 # Usage: ks_validate_date "2024-01-01T00:00:00Z" || exit 1
 ks_validate_date() {
     local date_str="$1"
-    $KS_DATE -d "$date_str" >/dev/null 2>&1
+    date -d "$date_str" >/dev/null 2>&1
 }
 
 # Get filter date from --days or --since parameters
@@ -39,7 +39,7 @@ ks_get_filter_date() {
 # Outputs: Array of file paths via global FILES_TO_PROCESS variable
 ks_collect_files_since() {
     local since_date="$1"
-    local since_epoch=$($KS_DATE -d "$since_date" +%s)
+    local since_epoch=$(date -d "$since_date" +%s)
     
     FILES_TO_PROCESS=()
     
@@ -47,7 +47,7 @@ ks_collect_files_since() {
     if [[ -f "$KS_HOT_LOG" && -s "$KS_HOT_LOG" ]]; then
         # Check if file was modified after since_date
         local file_mtime
-        file_mtime=$($KS_STAT -c %Y "$KS_HOT_LOG" 2>/dev/null || echo "0")
+        file_mtime=$(stat -c %Y "$KS_HOT_LOG" 2>/dev/null || echo "0")
         if [[ $file_mtime -ge $since_epoch ]]; then
             FILES_TO_PROCESS+=("$KS_HOT_LOG")
         fi
@@ -57,6 +57,6 @@ ks_collect_files_since() {
     if [[ -d "$KS_ARCHIVE_DIR" ]]; then
         while IFS= read -r -d '' file; do
             FILES_TO_PROCESS+=("$file")
-        done < <($KS_FIND "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f -newermt "$since_date" -print0 2>/dev/null | sort -zr)
+        done < <(find "$KS_ARCHIVE_DIR" -name "*.jsonl" -type f -newermt "$since_date" -print0 2>/dev/null | sort -zr)
     fi
 }

@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+
+# relationship-emergence - Track how relationships strengthen over conversation rounds
+
+set -euo pipefail
+
+# Source libraries
+source "$(dirname "${BASH_SOURCE[0]}")/../.ks-env" || exit 1
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
+source "$KS_ROOT/lib/usage.sh"
+source "$KS_ROOT/lib/argparse.sh"
+
+# Parse arguments for ANALYZE category
+ks_parse_category_args "ANALYZE" -- "$@"
+
+usage() {
+    ks_generate_usage "Track relationship formation patterns across dialogue rounds" \
+        "relationship-emergence EXPERIMENT_NAME" \
+        "Analyzes how concept relationships strengthen and evolve during conversations." \
+        "" \
+        "EXPERIMENT_NAME    Name of experiment directory in \$KS_EXPERIMENTS_DIR" \
+        "" \
+        "  --min-strength NUM   Minimum relationship strength (default: 0.1)" \
+        "  --format FORMAT      Output format: table, json, csv (default: table)" \
+        "  --limit NUM          Maximum relationships to return (default: 15)" \
+        "" \
+        "Examples:" \
+        "  relationship-emergence relationship-test" \
+        "  relationship-emergence concept-formation-test --format json --min-strength 0.3"
+}
+
+# Parse remaining arguments
+if [[ ${#REMAINING_ARGS[@]} -lt 1 ]]; then
+    ks_exit_usage "Missing required argument: EXPERIMENT_NAME"
+fi
+
+EXPERIMENT_NAME="${REMAINING_ARGS[0]}"
+MIN_STRENGTH="${ANALYZE_MIN_STRENGTH:-0.1}"
+OUTPUT_FORMAT="${ANALYZE_FORMAT:-table}"
+RESULT_LIMIT="${ANALYZE_LIMIT:-15}"
+
+# Validate experiment directory
+EXPERIMENT_DIR="$KS_EXPERIMENTS_DIR/$EXPERIMENT_NAME"
+if [[ ! -d "$EXPERIMENT_DIR" ]]; then
+    ks_exit_error "Experiment directory not found: $EXPERIMENT_DIR"
+fi
+
+KG_DB="$EXPERIMENT_DIR/$KS_CONVERSATION_KNOWLEDGE_DIR/concepts.db"
+if [[ ! -f "$KG_DB" ]]; then
+    ks_exit_error "Knowledge graph database not found. Run 'ks kg run-distillation' first."
+fi
+
+# Execute relationship analysis query
+QUERY="
+SELECT 
+    e.from_concept,
+    e.to_concept,
+    e.relationship_type,
+    COUNT(*) as mentions,
+    ROUND(AVG(e.weight), 3) as avg_strength,
+    ROUND(MAX(e.weight), 3) as max_strength,
+    MIN(CAST(json_extract(ev.event_data, '$.round_number') AS INTEGER)) as first_round,
+    MAX(CAST(json_extract(ev.event_data, '$.round_number') AS INTEGER)) as last_round,
+    (MAX(CAST(json_extract(ev.event_data, '$.round_number') AS INTEGER)) - 
+     MIN(CAST(json_extract(ev.event_data, '$.round_number') AS INTEGER)) + 1) as round_span
+FROM edges e
+JOIN events ev ON e.source_event_id = ev.id
+WHERE e.weight >= $MIN_STRENGTH
+  AND json_extract(ev.event_data, '$.round_number') IS NOT NULL
+GROUP BY e.from_concept, e.to_concept, e.relationship_type
+ORDER BY avg_strength DESC, round_span DESC
+LIMIT $RESULT_LIMIT;
+"
+
+case "$OUTPUT_FORMAT" in
+    "json")
+        sqlite3 -json "$KG_DB" "$QUERY"
+        ;;
+    "csv")
+        sqlite3 -csv -header "$KG_DB" "$QUERY"
+        ;;
+    "table"|*)
+        echo "Relationship Emergence Analysis: $EXPERIMENT_NAME"
+        echo "Minimum strength threshold: $MIN_STRENGTH"
+        echo ""
+        sqlite3 -header -column "$KG_DB" "$QUERY"
+        ;;
+esac
+
+if [[ "$ANALYZE_VERBOSE" == "true" ]]; then
+    echo ""
+    echo "Analysis Insights:"
+    echo "• High avg_strength indicates robust conceptual relationships"
+    echo "• Large round_span suggests relationships that develop over time"
+    echo "• Multiple mentions show reinforced connections during dialogue"
+    echo "• first_round shows when relationships initially emerged"
+    
+    # Additional analysis: relationship types
+    TYPE_QUERY="
+    SELECT 
+        relationship_type,
+        COUNT(*) as count,
+        ROUND(AVG(weight), 3) as avg_strength
+    FROM edges e
+    JOIN events ev ON e.source_event_id = ev.id
+    WHERE e.weight >= $MIN_STRENGTH
+    GROUP BY relationship_type
+    ORDER BY count DESC;
+    "
+    
+    echo ""
+    echo "Relationship Type Distribution:"
+    sqlite3 -header -column "$KG_DB" "$TYPE_QUERY"
+fi

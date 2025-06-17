@@ -59,7 +59,7 @@ ks_parse_args() {
     
     # Parse with getopt
     local opts
-    opts=$($KS_GETOPT -o h -l "$long_opts" -- "$@") || ks_exit_usage "Invalid options provided"
+    opts=$(getopt -o h -l "$long_opts" -- "$@") || ks_exit_usage "Invalid options provided"
     eval set -- "$opts"
     
     # Initialize args_out with defaults from category
@@ -157,7 +157,7 @@ ks_parse_category_args() {
     
     # Parse with getopt
     local opts
-    opts=$($KS_GETOPT -o h -l "$long_opts" -- "$@") || ks_exit_usage "Invalid options provided"
+    opts=$(getopt -o h -l "$long_opts" -- "$@") || ks_exit_usage "Invalid options provided"
     eval set -- "$opts"
     
     # Process options and set variables directly
@@ -250,7 +250,7 @@ ks_parse_custom_args() {
     
     # Parse with getopt
     local opts
-    opts=$($KS_GETOPT -o h -l "$long_opts" -- "$@") || ks_exit_usage "Invalid options provided"
+    opts=$(getopt -o h -l "$long_opts" -- "$@") || ks_exit_usage "Invalid options provided"
     eval set -- "$opts"
     
     # Return parsed options for caller to process

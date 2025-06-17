@@ -1,149 +1,238 @@
 #!/usr/bin/env bash
 
-# run-experiments.sh - Run all logex dialogue experiments for conceptual attractor discovery
+# run-experiments.sh - Orchestrate logex experiments for Issue #20
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KS_ROOT="$(dirname "$SCRIPT_DIR")"
+# Source environment
+source "$(dirname "${BASH_SOURCE[0]}")/../.ks-env" || exit 1
+source "$KS_ROOT/lib/core.sh"
+source "$KS_ROOT/lib/error.sh"
 
-echo "Logex Dialogue Experiments - Conceptual Attractor Discovery"
-echo "==========================================================="
-echo
-
-# Available experiments
 EXPERIMENTS=(
-    "scientist-philosopher-emergence"
-    "optimist-pessimist-ethics"  
-    "specialist-generalist-knowledge"
-    "past-future-creativity"
+    "concept-formation-test"
+    "knowledge-transfer-test" 
+    "consolidation-test"
+    "relationship-test"
 )
 
-# Function to run a single experiment
-run_experiment() {
-    local experiment_name="$1"
-    local experiment_dir="$SCRIPT_DIR/$experiment_name"
+usage() {
+    cat << EOF
+Usage: $0 COMMAND [EXPERIMENT_NAME]
+
+Commands:
+  run [EXPERIMENT]     Run experiment(s) - all if no name provided
+  analyze EXPERIMENT   Run all analysis tools on completed experiment
+  status [EXPERIMENT]  Show experiment status - all if no name provided
+  list                 List all available experiments
+  clean EXPERIMENT     Clean experiment data (removes knowledge/)
+
+Examples:
+  $0 run                           # Run all experiments sequentially
+  $0 run concept-formation-test    # Run specific experiment
+  $0 analyze concept-formation-test # Analyze completed experiment
+  $0 status                        # Show status of all experiments
+
+Monitoring:
+  To monitor experiment in real-time, open second terminal:
+    cd experiments/EXPERIMENT_NAME
+    source .ks-env
+    ksd
+
+EOF
+}
+
+validate_experiment() {
+    local experiment="$1"
+    local found=false
     
-    echo "Running experiment: $experiment_name"
-    echo "-----------------------------------"
+    for exp in "${EXPERIMENTS[@]}"; do
+        if [[ "$exp" == "$experiment" ]]; then
+            found=true
+            break
+        fi
+    done
     
-    if [[ ! -d "$experiment_dir" ]]; then
-        echo "Error: Experiment directory not found: $experiment_dir"
-        return 1
+    if [[ "$found" == "false" ]]; then
+        ks_exit_error "Unknown experiment: $experiment. Available: ${EXPERIMENTS[*]}"
+    fi
+}
+
+experiment_status() {
+    local experiment="$1"
+    local exp_dir="$KS_EXPERIMENTS_DIR/$experiment"
+    
+    if [[ ! -d "$exp_dir" ]]; then
+        echo "❌ $experiment: Not configured"
+        return
     fi
     
-    # Change to experiment directory
-    cd "$experiment_dir"
+    local config_file="$exp_dir/$KS_CONVERSATION_CONFIG"
+    local hot_log="$exp_dir/$KS_CONVERSATION_HOT_LOG"
+    local kg_db="$exp_dir/$KS_CONVERSATION_KNOWLEDGE_DIR/concepts.db"
     
-    # Run the orchestrator
-    echo "Starting logex orchestration..."
-    "$KS_ROOT/tools/logex/orchestrate" "$experiment_name"
+    printf "%-25s" "$experiment:"
     
-    # Wait for completion (in real implementation, this would monitor the process)
-    echo "Experiment orchestration initiated."
-    echo "Monitor progress with: ksd"
-    echo
-    
-    cd "$SCRIPT_DIR"
+    if [[ ! -f "$config_file" ]]; then
+        echo "❌ No config"
+    elif [[ ! -f "$hot_log" ]]; then
+        echo "⚪ Configured, not started"
+    elif [[ ! -f "$kg_db" ]]; then
+        local event_count=$(wc -l < "$hot_log" 2>/dev/null || echo "0")
+        echo "🟡 Running ($event_count events, no KG)"
+    else
+        local event_count=$(wc -l < "$hot_log" 2>/dev/null || echo "0")
+        local concept_count=$(sqlite3 "$kg_db" "SELECT COUNT(*) FROM concepts;" 2>/dev/null || echo "0")
+        echo "✅ Complete ($event_count events, $concept_count concepts)"
+    fi
 }
 
-# Function to analyze experiment results
+run_experiment() {
+    local experiment="$1"
+    local exp_dir="$KS_EXPERIMENTS_DIR/$experiment"
+    
+    echo "🚀 Starting experiment: $experiment"
+    echo "📁 Directory: $exp_dir"
+    echo ""
+    echo "💡 To monitor in real-time, open second terminal and run:"
+    echo "   cd $exp_dir"
+    echo "   source .ks-env"
+    echo "   ksd"
+    echo ""
+    echo "Press Enter to start experiment, Ctrl+C to cancel..."
+    read -r
+    
+    cd "$exp_dir"
+    bash "$KS_ROOT/tools/logex/orchestrate-worker" "$exp_dir"
+    
+    echo ""
+    echo "✅ Experiment completed: $experiment"
+    echo "🔍 Running knowledge graph distillation..."
+    
+    # Run knowledge graph distillation
+    cd "$exp_dir"
+    bash "$KS_ROOT/tools/kg/run-distillation"
+    
+    echo "📊 Experiment ready for analysis. Run:"
+    echo "   $0 analyze $experiment"
+}
+
 analyze_experiment() {
-    local experiment_name="$1"
+    local experiment="$1"
+    local exp_dir="$KS_EXPERIMENTS_DIR/$experiment"
     
-    echo "Analyzing experiment: $experiment_name"
-    echo "------------------------------------"
+    if [[ ! -d "$exp_dir" ]]; then
+        ks_exit_error "Experiment not found: $experiment"
+    fi
     
-    # Run knowledge graph distillation first
-    echo "Running knowledge graph distillation..."
-    cd "$SCRIPT_DIR/$experiment_name"
-    "$KS_ROOT/tools/kg/run-distillation"
+    local kg_db="$exp_dir/$KS_CONVERSATION_KNOWLEDGE_DIR/concepts.db"
+    if [[ ! -f "$kg_db" ]]; then
+        echo "⚠️  Knowledge graph not found. Running distillation first..."
+        cd "$exp_dir"
+        bash "$KS_ROOT/tools/kg/run-distillation"
+    fi
     
-    # Extract conceptual attractors
-    echo "Extracting conceptual attractors..."
-    "$KS_ROOT/tools/analyze/extract-conceptual-attractors" "$experiment_name"
+    echo "📊 Analyzing experiment: $experiment"
+    echo ""
     
-    echo
-    echo "Identifying conversation flows..."
-    "$KS_ROOT/tools/analyze/identify-conversation-flows" "$experiment_name"
+    echo "🎯 Conceptual Attractors:"
+    bash "$KS_ROOT/tools/analyze/conceptual-attractors" "$experiment" --verbose
+    echo ""
     
-    echo  
-    echo "Analyzing relationship patterns..."
-    "$KS_ROOT/tools/analyze/analyze-relationship-patterns" "$experiment_name"
+    echo "🔗 Relationship Emergence:"
+    bash "$KS_ROOT/tools/analyze/relationship-emergence" "$experiment" --verbose
+    echo ""
     
-    echo
-    echo "----------------------------------------"
-    echo
+    echo "🧠 Knowledge Consolidation:"
+    bash "$KS_ROOT/tools/analyze/knowledge-consolidation" "$experiment" --verbose
+    echo ""
+    
+    echo "✅ Analysis complete for: $experiment"
 }
 
-# Main execution
+clean_experiment() {
+    local experiment="$1"
+    local exp_dir="$KS_EXPERIMENTS_DIR/$experiment"
+    
+    if [[ ! -d "$exp_dir" ]]; then
+        ks_exit_error "Experiment not found: $experiment"
+    fi
+    
+    echo "⚠️  This will delete all experiment data for: $experiment"
+    echo "📁 Directory: $exp_dir/knowledge/"
+    echo ""
+    echo "Type 'yes' to confirm:"
+    read -r confirmation
+    
+    if [[ "$confirmation" == "yes" ]]; then
+        rm -rf "$exp_dir/$KS_CONVERSATION_KNOWLEDGE_DIR"
+        echo "✅ Cleaned experiment data: $experiment"
+    else
+        echo "❌ Clean cancelled"
+    fi
+}
+
+# Main command handling
 case "${1:-}" in
     "run")
-        experiment_name="${2:-}"
-        if [[ -n "$experiment_name" ]]; then
-            if [[ " ${EXPERIMENTS[*]} " =~ " $experiment_name " ]]; then
-                run_experiment "$experiment_name"
-            else
-                echo "Error: Unknown experiment '$experiment_name'"
-                echo "Available experiments: ${EXPERIMENTS[*]}"
-                exit 1
-            fi
-        else
-            echo "Running all experiments..."
-            for exp in "${EXPERIMENTS[@]}"; do
-                run_experiment "$exp"
-                sleep 5  # Brief pause between experiments
+        if [[ $# -eq 1 ]]; then
+            # Run all experiments
+            echo "🚀 Running all experiments sequentially..."
+            for experiment in "${EXPERIMENTS[@]}"; do
+                echo ""
+                echo "========================================"
+                run_experiment "$experiment"
             done
+            echo ""
+            echo "✅ All experiments completed!"
+        elif [[ $# -eq 2 ]]; then
+            # Run specific experiment
+            validate_experiment "$2"
+            run_experiment "$2"
+        else
+            ks_exit_error "Usage: $0 run [EXPERIMENT_NAME]"
         fi
         ;;
     "analyze")
-        experiment_name="${2:-}"
-        if [[ -n "$experiment_name" ]]; then
-            if [[ " ${EXPERIMENTS[*]} " =~ " $experiment_name " ]]; then
-                analyze_experiment "$experiment_name"
-            else
-                echo "Error: Unknown experiment '$experiment_name'"
-                echo "Available experiments: ${EXPERIMENTS[*]}"
-                exit 1
-            fi
-        else
-            echo "Analyzing all experiments..."
-            for exp in "${EXPERIMENTS[@]}"; do
-                analyze_experiment "$exp"
+        if [[ $# -ne 2 ]]; then
+            ks_exit_error "Usage: $0 analyze EXPERIMENT_NAME"
+        fi
+        validate_experiment "$2"
+        analyze_experiment "$2"
+        ;;
+    "status")
+        if [[ $# -eq 1 ]]; then
+            # Show all experiments
+            echo "Experiment Status:"
+            echo ""
+            for experiment in "${EXPERIMENTS[@]}"; do
+                experiment_status "$experiment"
             done
+        elif [[ $# -eq 2 ]]; then
+            # Show specific experiment
+            validate_experiment "$2"
+            experiment_status "$2"
+        else
+            ks_exit_error "Usage: $0 status [EXPERIMENT_NAME]"
         fi
         ;;
     "list")
         echo "Available experiments:"
-        for exp in "${EXPERIMENTS[@]}"; do
-            echo "  - $exp"
+        for experiment in "${EXPERIMENTS[@]}"; do
+            echo "  - $experiment"
         done
         ;;
-    "status")
-        echo "Experiment Status:"
-        echo "=================="
-        for exp in "${EXPERIMENTS[@]}"; do
-            exp_dir="$SCRIPT_DIR/$exp"
-            if [[ -f "$exp_dir/knowledge/kg.db" ]]; then
-                concept_count=$(sqlite3 "$exp_dir/knowledge/kg.db" "SELECT COUNT(*) FROM concepts" 2>/dev/null || echo "0")
-                echo "  $exp: $concept_count concepts extracted"
-            else
-                echo "  $exp: Not run yet"
-            fi
-        done
+    "clean")
+        if [[ $# -ne 2 ]]; then
+            ks_exit_error "Usage: $0 clean EXPERIMENT_NAME"
+        fi
+        validate_experiment "$2"
+        clean_experiment "$2"
+        ;;
+    "help"|"--help"|"-h"|"")
+        usage
         ;;
     *)
-        echo "Usage: $0 {run|analyze|list|status} [experiment_name]"
-        echo
-        echo "Commands:"
-        echo "  run [experiment]     Run specific experiment or all experiments"
-        echo "  analyze [experiment] Analyze specific experiment or all experiments"
-        echo "  list                 List available experiments"
-        echo "  status               Show status of all experiments"
-        echo
-        echo "Available experiments:"
-        for exp in "${EXPERIMENTS[@]}"; do
-            echo "  - $exp"
-        done
+        ks_exit_error "Unknown command: $1"
         ;;
 esac

@@ -50,7 +50,7 @@ fi
 # Run performance tests
 echo
 echo "=== PERFORMANCE TESTS ==="
-if [ -d "$TEST_ROOT/performance" ] && [ -n "$($KS_FIND "$TEST_ROOT/performance" -name "*.bats" 2>/dev/null)" ]; then
+if [ -d "$TEST_ROOT/performance" ] && [ -n "$(find "$TEST_ROOT/performance" -name "*.bats" 2>/dev/null)" ]; then
     echo "Performance Tests:"
     echo "------------------"
     bats "$TEST_ROOT"/performance/*.bats || PERF_EXIT=$?

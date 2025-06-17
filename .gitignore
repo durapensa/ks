@@ -1,5 +1,6 @@
 knowledge/
 experiments/
+bin/
 *.log
 .DS_Store
 .env

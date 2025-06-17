@@ -257,11 +257,7 @@ func max(a, b int64) int64 {
 
 // getBashPath returns the configured bash path (required for consistent bash 5.x behavior)
 func getBashPath() string {
-	bashPath := os.Getenv("KS_BASH")
-	if bashPath == "" {
-		log.Fatal("KS_BASH environment variable must be set (source .ks-env)")
-	}
-	return bashPath
+	return "bash"
 }
 
 // Load dashboard data from system with config
@@ -269,7 +265,7 @@ func loadDashboardDataWithConfig(cfg *config.Config) tea.Cmd {
 	return func() tea.Msg {
 		// Get event count - use bash command for both modes (consistent with status mode)
 		var totalEvents int
-		cmd := exec.Command(getBashPath(), "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/lib/events.sh; ks_count_new_events")
+		cmd := exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/lib/events.sh; ks_count_new_events")
 		if cfg.IsConversation {
 			// Set working directory for conversation context
 			cmd.Dir = cfg.ConversationDir
@@ -280,7 +276,7 @@ func loadDashboardDataWithConfig(cfg *config.Config) tea.Cmd {
 
 		// Get pending analyses count
 		var pendingCount int
-		pendingCmd := exec.Command(getBashPath(), "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/tools/lib/queue.sh; ks_queue_list_pending | jq 'length'")
+		pendingCmd := exec.Command("bash", "-c", "source ~/.ks-env 2>/dev/null || source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/tools/lib/queue.sh; ks_queue_list_pending | jq 'length'")
 		if output, err := pendingCmd.Output(); err == nil {
 			pendingCount, _ = strconv.Atoi(strings.TrimSpace(string(output)))
 		}
@@ -320,7 +316,7 @@ func runExternalToolWithConfig(cfg *config.Config, command string) tea.Cmd {
 	fullCommand := fmt.Sprintf("source ~/.ks-env 2>/dev/null || source .ks-env; %s", command)
 	
 	// If we're in a conversation directory, set working directory
-	cmd := exec.Command(getBashPath(), "-c", fullCommand)
+	cmd := exec.Command("bash", "-c", fullCommand)
 	if cfg.IsConversation {
 		cmd.Dir = cfg.ConversationDir
 	}
@@ -336,7 +332,7 @@ func runExternalToolWithConfig(cfg *config.Config, command string) tea.Cmd {
 // Search knowledge base with context awareness
 func searchKnowledgeWithConfig(cfg *config.Config, term string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := exec.Command(getBashPath(), "-c", fmt.Sprintf("source ~/.ks-env 2>/dev/null || source .ks-env; $KS_ROOT/tools/capture/query '%s'", term))
+		cmd := exec.Command("bash", "-c", fmt.Sprintf("source ~/.ks-env 2>/dev/null || source .ks-env; $KS_ROOT/tools/capture/query '%s'", term))
 		
 		// If we're in a conversation directory, set working directory
 		if cfg.IsConversation {
@@ -867,7 +863,7 @@ func main() {
 		}
 		
 		// Get basic stats
-		cmd := exec.Command(getBashPath(), "-c", "source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/lib/events.sh; ks_count_new_events")
+		cmd := exec.Command("bash", "-c", "source .ks-env; source $KS_ROOT/lib/core.sh; source $KS_ROOT/lib/events.sh; ks_count_new_events")
 		output, err := cmd.Output()
 		if err != nil {
 			log.Fatal(err)

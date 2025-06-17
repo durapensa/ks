@@ -3,46 +3,78 @@
 # Source this file in all tools: source "${0%/*}/../../.ks-env"
 # Then source needed libraries directly: source "$KS_ROOT/lib/core.sh"
 
-# === BASH 5.x SETUP (using old-bash compatible syntax) ===
-# Ensure we have bash 5.x available before setting up anything else
+# === MODERN TOOL SETUP ===
+# Set up PATH to prioritize modern versions of tools (bash 5.x, GNU tools on macOS)
 
-_setup_bash() {
-    # Check if bash 5.x is already available at expected location
-    if [ -x "/opt/homebrew/bin/bash" ]; then
-        local bash_version=$(/opt/homebrew/bin/bash --version | head -1 | grep -o '[0-9]\+' | head -1)
-        if [ "$bash_version" -ge 5 ]; then
-            export KS_BASH="/opt/homebrew/bin/bash"
-            return 0
-        fi
-    fi
+_setup_ks_tools() {
+    # Create KS bin directory for normalized tool names
+    local ks_bin="$KS_ROOT/bin"
+    mkdir -p "$ks_bin"
     
-    # Check if homebrew is available
-    if ! command -v brew >/dev/null 2>&1; then
-        echo "Warning: Homebrew not found. KS requires bash 5.x from Homebrew." >&2
-        echo "Install Homebrew: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" >&2
-        export KS_BASH="bash"  # fallback for now
-        return 1
-    fi
-    
-    # Check if bash package is installed
-    if ! brew list bash >/dev/null 2>&1; then
-        echo "Installing bash 5.x via Homebrew..." >&2
-        brew install bash
-    fi
-    
-    # Verify installation
-    if [ -x "/opt/homebrew/bin/bash" ]; then
-        export KS_BASH="/opt/homebrew/bin/bash"
-        echo "KS_BASH set to: $KS_BASH" >&2
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS - Set up symlinks to Homebrew versions with standard names
+        
+        # Check and install required tools
+        local required_tools=(bash coreutils findutils util-linux)
+        for tool in "${required_tools[@]}"; do
+            if ! brew list "$tool" >/dev/null 2>&1; then
+                echo "Installing $tool via Homebrew..." >&2
+                brew install "$tool"
+            fi
+        done
+        
+        # Create symlinks with standard names pointing to modern versions
+        local tool_mappings=(
+            "bash:/opt/homebrew/bin/bash"
+            "date:/opt/homebrew/bin/gdate"
+            "find:/opt/homebrew/bin/gfind" 
+            "stat:/opt/homebrew/bin/gstat"
+            "getopt:/opt/homebrew/opt/util-linux/bin/getopt"
+            "flock:/opt/homebrew/bin/flock"
+        )
+        
+        for mapping in "${tool_mappings[@]}"; do
+            local name="${mapping%%:*}"
+            local target="${mapping##*:}"
+            local link="$ks_bin/$name"
+            
+            if [[ -x "$target" ]]; then
+                # Remove existing symlink and create new one
+                rm -f "$link"
+                ln -s "$target" "$link"
+            else
+                echo "Warning: Tool not found: $target" >&2
+            fi
+        done
+        
     else
-        echo "Error: Failed to install bash 5.x" >&2
-        export KS_BASH="bash"  # fallback
-        return 1
+        # Linux - tools should already be modern, but create symlinks for consistency
+        local standard_tools=(bash date find stat getopt flock)
+        for tool in "${standard_tools[@]}"; do
+            local tool_path=$(command -v "$tool" 2>/dev/null)
+            if [[ -n "$tool_path" ]]; then
+                rm -f "$ks_bin/$tool"
+                ln -s "$tool_path" "$ks_bin/$tool"
+            fi
+        done
     fi
+    
+    # Save original PATH if not already saved, then prepend KS bin
+    if [[ -z "$KS_ORIGINAL_PATH" ]]; then
+        export KS_ORIGINAL_PATH="$PATH"
+    fi
+    
+    # Only prepend KS bin if not already in PATH
+    if [[ ":$PATH:" != *":$ks_bin:"* ]]; then
+        export PATH="$ks_bin:$PATH"
+    fi
+    
+    # Export KS_BASH for compatibility (though 'bash' command now works everywhere)
+    export KS_BASH="$ks_bin/bash"
 }
 
-# Run bash setup first
-_setup_bash
+# Run tool setup
+_setup_ks_tools
 
 # Base directories
 export KS_ROOT="${KS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -70,21 +102,5 @@ export KS_CONVERSATION_KNOWLEDGE_DIR="knowledge"
 export KS_CONVERSATION_EVENTS_DIR="$KS_CONVERSATION_KNOWLEDGE_DIR/events"
 export KS_CONVERSATION_HOT_LOG="$KS_CONVERSATION_EVENTS_DIR/hot.jsonl"
 
-# Platform-specific command mappings
-# Use GNU tools explicitly to avoid PATH manipulation and ensure consistent behavior
-# Note: KS_BASH is set by _setup_bash() above
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS with Homebrew GNU tools (g-prefixed to avoid shadowing system commands)
-    export KS_DATE="gdate"
-    export KS_STAT="gstat"
-    export KS_FIND="gfind"
-    export KS_FLOCK="flock"      # from util-linux package
-    export KS_GETOPT="$(brew --prefix util-linux)/bin/getopt"    # from util-linux package
-else
-    # Linux with native GNU tools
-    export KS_DATE="date"
-    export KS_STAT="stat"
-    export KS_FIND="find"
-    export KS_FLOCK="flock"
-    export KS_GETOPT="getopt"
-fi
+# Note: Standard tool names (bash, date, find, stat, getopt, flock) now work
+# consistently across platforms via the symlinks in $KS_ROOT/bin/

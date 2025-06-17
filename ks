@@ -12,7 +12,7 @@ declare -A TOOL_MAP TOOL_CATEGORIES
 
 discover_tools() {
     [[ -v TOOL_MAP && ${#TOOL_MAP[@]} -gt 0 ]] && return
-    local find_cmd="${KS_FIND:-gfind}"
+    local find_cmd="find"
     while IFS= read -r tool; do
         local basename="${tool##*/}"
         local category="${tool%/*}"

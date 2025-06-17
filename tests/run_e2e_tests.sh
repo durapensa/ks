@@ -38,7 +38,7 @@ export TEST_ROOT=$(dirname "$0")
 # Run e2e tests
 echo "End-to-End Tests:"
 echo "-----------------"
-if [ -d "$TEST_ROOT/e2e" ] && [ -n "$($KS_FIND "$TEST_ROOT/e2e" -name "*.bats" 2>/dev/null)" ]; then
+if [ -d "$TEST_ROOT/e2e" ] && [ -n "$(find "$TEST_ROOT/e2e" -name "*.bats" 2>/dev/null)" ]; then
     bats "$TEST_ROOT"/e2e/*.bats
 else
     echo "No e2e tests found in $TEST_ROOT/e2e/"

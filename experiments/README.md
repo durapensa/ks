@@ -1,248 +1,280 @@
-# Logex Dialogue Experiments
+# Logex Experiments for Issue #20
 
-This directory contains Claude-Claude dialogue experiments designed to discover conceptual attractors as described in GitHub issue #20.
+*Created: 2025-06-17*  
+*Purpose: Systematic Claude-Claude dialogue experiments to discover conceptual attractors*
 
 ## Overview
 
-The experiments explore how extended AI-AI dialogue reveals persistent conceptual structures through systematic analysis of conversation patterns. Each experiment features two Claude instances with different personas engaging in extended dialogue about specific topics.
+This directory contains four designed experiments that use the logex conversation harness to study how concepts form, evolve, and consolidate during AI-AI dialogue. Each experiment tests specific hypotheses about knowledge graph formation patterns.
 
-## Available Experiments
-
-### 1. Scientist vs Philosopher - Emergence and Complexity
-- **Directory**: `scientist-philosopher-emergence/`
-- **Personas**: Reductionist scientist vs Holistic philosopher
-- **Topic**: How emergent properties arise in complex systems
-- **Style**: Dialectical opposition
-- **Expected Attractors**: consciousness, reductionism, causation, emergence, complexity
-
-### 2. Optimist vs Pessimist - Ethics and Evolution
-- **Directory**: `optimist-pessimist-ethics/`
-- **Personas**: Optimistic vs Pessimistic views on human nature
-- **Topic**: How moral systems emerge from evolutionary pressures
-- **Style**: Dialectical opposition
-- **Expected Attractors**: altruism, selfishness, cooperation, competition, moral_progress
-
-### 3. Specialist vs Generalist - Knowledge and Uncertainty
-- **Directory**: `specialist-generalist-knowledge/`
-- **Personas**: Deep specialist vs Broad generalist
-- **Topic**: Nature of knowledge and relationship with uncertainty
-- **Style**: Collaborative building
-- **Expected Attractors**: expertise, synthesis, uncertainty, complexity, patterns
-
-### 4. Past vs Future - Creativity and Constraints
-- **Directory**: `past-future-creativity/`
-- **Personas**: Traditionalist vs Futurist
-- **Topic**: How constraints shape and enable creativity
-- **Style**: Collaborative building
-- **Expected Attractors**: tradition, innovation, constraints, freedom, creativity
-
-## Running Experiments
-
-### Quick Start
+## Quick Start
 
 ```bash
-# Run all experiments
-./experiments/run-experiments.sh run
-
-# Run specific experiment
-./experiments/run-experiments.sh run scientist-philosopher-emergence
-
-# Check status
+# Check experiment status
 ./experiments/run-experiments.sh status
 
-# Analyze results
-./experiments/run-experiments.sh analyze scientist-philosopher-emergence
+# Run specific experiment with real-time monitoring
+./experiments/run-experiments.sh run concept-formation-test
+
+# Monitor experiment (in second terminal)
+cd experiments/concept-formation-test
+source .ks-env
+ksd
+
+# Analyze completed experiment
+./experiments/run-experiments.sh analyze concept-formation-test
 ```
 
-### Manual Execution
+## Experimental Framework
 
-```bash
-# Run specific experiment manually
-cd experiments/scientist-philosopher-emergence
-ks logex orchestrate scientist-philosopher-emergence
+### Research Questions
 
-# Monitor progress
-ksd  # In separate terminal
+1. **Concept Formation**: How do new concepts crystallize during extended dialogue?
+2. **Conceptual Attractors**: Which concepts naturally emerge as conversation focal points?
+3. **Relationship Discovery**: How do concept relationships strengthen over dialogue rounds?
+4. **Knowledge Consolidation**: How do different dialogue styles affect concept formation quality?
 
-# Analyze results after completion
-ks kg run-distillation
-ks extract-conceptual-attractors scientist-philosopher-emergence
-ks identify-conversation-flows scientist-philosopher-emergence
-ks analyze-relationship-patterns scientist-philosopher-emergence
-```
+### Data Collection
+
+Each experiment automatically captures:
+- **Event Stream**: Real-time conversation events in `knowledge/events/hot.jsonl`
+- **Knowledge Graph**: Extracted concepts and relationships in `knowledge/concepts.db`
+- **Full Dialogue**: Complete conversation logs for reference
+- **Metadata**: Experiment configuration and execution details
+
+## Experiments
+
+### 1. Concept Formation Dynamics (`concept-formation-test`)
+
+**Participants**: Theoretical Physicist vs Philosophy of Science  
+**Topic**: "How do new scientific concepts emerge from existing knowledge?"  
+**Duration**: 30 turns (15 per participant)
+
+**Expected Conceptual Attractors**:
+- emergence, paradigm-shift, discovery, novelty
+- hypothesis, validation, peer-review, scientific-method
+- intuition, creativity, logic, mathematical-formalism
+
+**Hypothesis**: Interdisciplinary dialogue creates richer concept networks than single-domain discussion.
+
+**Key Questions**:
+- How do empirical vs epistemological perspectives shape concept formation?
+- Which concepts persist across both scientific and philosophical viewpoints?
+- What bridge concepts emerge between domains?
+
+### 2. Cross-Domain Knowledge Transfer (`knowledge-transfer-test`)
+
+**Participants**: Systems Theorist vs Software Architect  
+**Topic**: "Connections between complexity science and software architecture"  
+**Duration**: 40 turns (20 per participant)
+
+**Expected Conceptual Attractors**:
+- emergence, hierarchy, feedback-loops, complexity
+- modularity, coupling, cohesion, scalability
+- patterns, robustness, adaptation, self-organization
+
+**Hypothesis**: Cross-domain conversations generate stronger analogical relationships.
+
+**Key Questions**:
+- How do abstract theoretical concepts map to concrete technical implementations?
+- Which analogies prove most robust across domains?
+- What novel insights emerge from cross-pollination?
+
+### 3. Knowledge Consolidation (`consolidation-test`)
+
+**Participants**: Database Expert vs Network Engineer  
+**Topic**: "Distributed systems consensus mechanisms"  
+**Duration**: 50 turns (25 per participant)
+
+**Expected Conceptual Attractors**:
+- consensus, consistency, partition-tolerance, availability
+- raft, paxos, byzantine-fault-tolerance, leader-election
+- reliability, performance, trade-offs, CAP-theorem
+
+**Hypothesis**: Expert-level dialogue produces higher-weight, more stable concepts.
+
+**Key Questions**:
+- How do complementary expertises consolidate into unified understanding?
+- Which concepts prove most stable across different expert perspectives?
+- What technical nuances emerge through detailed exploration?
+
+### 4. Relationship Discovery (`relationship-test`)
+
+**Participants**: Evolutionary Biologist vs Senior Developer  
+**Topic**: "Apply biological evolution principles to software development"  
+**Duration**: 50 turns (25 per participant)
+
+**Expected Conceptual Attractors**:
+- natural-selection, mutation, adaptation, evolution
+- iteration, refactoring, testing, code-review
+- fitness-landscape, genetic-algorithm, selection-pressure
+
+**Hypothesis**: Metaphorical conversations create distinct relationship patterns from literal discussions.
+
+**Key Questions**:
+- How do biological metaphors map to software development practices?
+- Which analogical relationships prove most valuable for understanding?
+- What novel development insights emerge from evolutionary thinking?
 
 ## Analysis Tools
 
-### 1. Extract Conceptual Attractors
-Identifies concepts that appear persistently across dialogue rounds.
+### Conceptual Attractors Analysis
 
 ```bash
-ks extract-conceptual-attractors <experiment_name>
+ks conceptual-attractors EXPERIMENT_NAME [--min-rounds N] [--format json|csv|table]
 ```
 
-**Output**: Concepts with their occurrence frequency across rounds, total mentions, and average weights.
+Identifies concepts that appear persistently across multiple dialogue rounds, indicating natural conversation focal points.
 
-### 2. Identify Conversation Flows
-Finds concepts that conversations naturally flow toward (high inbound connections).
+**Output**: Concept names with appearance frequency, weight evolution, and round spans.
+
+### Relationship Emergence Analysis
 
 ```bash
-ks identify-conversation-flows <experiment_name>
+ks relationship-emergence EXPERIMENT_NAME [--min-strength N] [--format json|csv|table]
 ```
 
-**Output**: Concepts with high inflow counts, showing which ideas serve as focal points.
+Tracks how concept relationships form and strengthen during conversation, revealing knowledge integration patterns.
 
-### 3. Analyze Relationship Patterns
-Discovers relationships that strengthen over time during dialogue.
+**Output**: Relationship pairs with strength evolution, mention frequency, and temporal patterns.
+
+### Knowledge Consolidation Analysis
 
 ```bash
-ks analyze-relationship-patterns <experiment_name>
+ks knowledge-consolidation EXPERIMENT_NAME [--min-mentions N] [--format json|csv|table]
 ```
 
-**Output**: Concept pairs with strengthening connections, showing emergent associations.
+Measures concept definition stability and weight evolution, showing how ideas crystallize through dialogue.
 
-### 4. Knowledge Graph Query
-Provides experiment-specific analysis and statistics.
+**Output**: Concept durability, definition stability, and importance evolution metrics.
+
+## Real-Time Monitoring
+
+### Using ksd
+
+Monitor any running experiment in real-time:
 
 ```bash
-ks kg query --experiment <experiment_name>
+# Start experiment (terminal 1)
+cd experiments/EXPERIMENT_NAME
+./run-experiments.sh run EXPERIMENT_NAME
+
+# Monitor progress (terminal 2)
+cd experiments/EXPERIMENT_NAME
+source .ks-env  # Load experiment environment variables
+ksd             # Launch knowledge system dashboard
 ```
 
-**Output**: Overview of experiment data, timelines, and relationship distributions.
+### Key Monitoring Features
 
-## Configuration Structure
+- **Event Stream**: Watch conversation events as they occur
+- **Concept Formation**: See concepts extracted in real-time
+- **Progress Tracking**: Monitor dialogue round progression
+- **Quality Assessment**: Observe conversation quality and engagement
 
-Each experiment directory contains:
+## Expected Insights
 
-```
-experiment-name/
-├── logex-config.yaml       # Experiment configuration
-├── conversants/            # Individual conversant logs
-├── knowledge/              # Knowledge capture
-│   ├── events/
-│   │   └── hot.jsonl      # Event stream
-│   └── kg.db              # Knowledge graph (after distillation)
-└── supervise/             # Process supervision
-```
+### For Knowledge Graph Enhancement
 
-### Configuration Format
+1. **Concept Deduplication**: Which concepts are actually the same vs genuinely different?
+2. **Relationship Weighting**: How should relationship strength evolve over time?
+3. **Cross-Reference Optimization**: Which dialogue moments produce the strongest concepts?
+4. **Temporal Patterns**: How do concept weights naturally decay or strengthen?
+
+### For Development Prioritization
+
+- **Consistent Patterns** → Prioritize clustering algorithms
+- **Noisy Relationship Discovery** → Focus on better inference methods  
+- **Variable Consolidation by Style** → Develop persona-aware processing
+- **Valuable Cross-Domain Transfer** → Enhance analogical reasoning
+
+## Integration with Mechanistic Interpretability
+
+Compare experimental results with recent research on concept formation in large language models:
+
+- Do dialogue-emergent concepts match internal model representations?
+- Are AI-AI discovered relationships consistent with human intuitions?
+- How do conversation-level attractors relate to model-level feature activations?
+
+## Configuration Format
+
+Each experiment uses a `logex-config.yaml` file with this structure:
 
 ```yaml
 conversation:
-  name: "experiment-name"
-  topic: "discussion topic"
+  name: "EXPERIMENT_NAME"
+  topic: "Research topic"
   description: "Experiment description"
 
 settings:
-  max_turns_per_conversant: 50
-  turn_delay_seconds: 2
-  rate_limit_delay: 1000
+  max_turns_per_conversant: N
+  turn_delay_seconds: 0
+  rate_limit_delay: 0
 
 conversants:
-  persona_a:
+  alice:
     type: "claude"
     persona: "Detailed persona description..."
-  persona_b:
-    type: "claude"
+  bob:
+    type: "claude" 
     persona: "Detailed persona description..."
 
 dialogue:
-  starter: "persona_a"
-  initial_prompt: "Opening prompt to start conversation..."
+  starter: "alice"
+  initial_prompt: "Opening conversation prompt..."
   turn_taking:
     strategy: "round_robin"
 
 exit_conditions:
-  max_total_turns: 100
-  keywords: ["conclusion", "synthesis", "endpoint"]
+  max_total_turns: N*2
+  keywords: ["goodbye", "farewell", "end conversation"]
   manual_stop: true
-
-experimental:
-  experiment_type: "conceptual_attractor_discovery"
-  persona_pair: "scientist_philosopher"
-  topic_seed: "emergence_complexity"
-  conversation_style: "dialectical_opposition"
-  expected_attractors: ["concept1", "concept2", "..."]
 ```
 
-## Expected Outcomes
+## Advanced Usage
 
-### Conceptual Attractors
-- **Universal Attractors**: Concepts that emerge regardless of starting point
-- **Persona-Specific Patterns**: Ideas that consistently appear with certain persona combinations
-- **Topic-Driven Emergence**: Concepts that naturally arise from specific discussion domains
+### Batch Execution
 
-### Relationship Patterns
-- **Strengthening Associations**: Concept pairs that become more strongly connected over time
-- **Bridge Concepts**: Ideas that consistently link disparate domains
-- **Emergent Hierarchies**: How abstract concepts emerge from concrete discussions
-
-### Validation Opportunities
-- **Mechanistic Interpretability**: Compare discovered attractors with published findings about LLM features
-- **Predictive Testing**: Use identified patterns to predict concept emergence in new dialogues
-- **Cross-Validation**: Verify patterns across different persona combinations and topics
-
-## Monitoring and Debugging
-
-### Real-time Monitoring
 ```bash
-# Watch experiment progress
-ksd
+# Run all experiments sequentially
+./experiments/run-experiments.sh run
 
-# Check logs
-tail -f experiments/<experiment>/conversants/*.log
-tail -f experiments/<experiment>/supervise/*.log
+# Check status of all experiments
+./experiments/run-experiments.sh status
+
+# Clean experiment data
+./experiments/run-experiments.sh clean EXPERIMENT_NAME
 ```
 
-### Troubleshooting
+### Custom Analysis
+
 ```bash
-# Validate configuration
-ks logex configure --dry-run --output <experiment>
+# Export data for external analysis
+ks conceptual-attractors concept-formation-test --format csv > attractors.csv
+ks relationship-emergence relationship-test --format json > relationships.json
 
-# Check orchestration status
-ks logex orchestrate --status
-
-# Verify event capture
-head experiments/<experiment>/knowledge/events/hot.jsonl
+# Query knowledge graph directly
+cd experiments/EXPERIMENT_NAME
+ks kg query --experiment-analysis
 ```
 
-## Integration with Research
+### Extending Experiments
 
-### Mechanistic Interpretability Connections
-- Compare discovered attractors with known LLM features
-- Validate hierarchical patterns against attention head specialization
-- Test predictions about concept emergence
+To create new experiments:
 
-### Experimental Methodology
-- Use control experiments with identical persona pairs
-- Vary conversation styles while keeping personas constant
-- Test robustness across different topic seeds
+1. Use `tools/logex/configure NEW_EXPERIMENT_NAME`
+2. Edit the generated `logex-config.yaml`
+3. Add experiment name to `run-experiments.sh` EXPERIMENTS array
+4. Run and analyze using existing tools
 
-### Data Export
-```bash
-# Export for external analysis
-ks extract-conceptual-attractors <experiment> --format json > attractors.json
-ks identify-conversation-flows <experiment> --format csv > flows.csv
-ks analyze-relationship-patterns <experiment> --format json > patterns.json
-```
+## Future Enhancements
 
-## Future Extensions
+Based on experimental results, consider:
 
-### Additional Persona Pairs
-- Expert vs Novice
-- Intuitive vs Analytical
-- Collaborative vs Competitive
-- Creative vs Practical
+1. **Multi-turn persona evolution** - How personas adapt during long conversations
+2. **Intervention experiments** - Human guidance effects on concept formation
+3. **Larger dialogue groups** - 3+ participant conversation dynamics
+4. **Domain expertise gradients** - Varying levels of expertise interactions
+5. **Conversation style variations** - Collaborative vs adversarial dialogue modes
 
-### Conversation Styles
-- Socratic questioning
-- Free association
-- Structured debate
-- Exploratory dialogue
-
-### Analysis Enhancements
-- Temporal evolution tracking
-- Concept clustering algorithms
-- Cross-experiment pattern detection
-- Predictive modeling
-
-This framework provides a solid foundation for discovering conceptual attractors through systematic AI-AI dialogue analysis, with clear pathways for validation against mechanistic interpretability research.
+This experimental framework provides empirical foundation for data-driven development priorities in the knowledge system.

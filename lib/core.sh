@@ -11,7 +11,7 @@ ks_ensure_dirs() {
 
 ks_timestamp() {
     # Generate UTC timestamp in ISO format
-    $KS_DATE -u '+%Y-%m-%dT%H:%M:%SZ'
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
 
 ks_sanitize_string() {
@@ -23,6 +23,18 @@ ks_sanitize_string() {
     # Allow alphanumeric, spaces, hyphens, underscores, periods, colons
     # Replace slashes and spaces with underscores for safe filenames
     echo "$input" | sd '[^a-zA-Z0-9 _.:-]' '' | sd '[/ ]' '_'
+}
+
+ks_restore_path() {
+    # Restore PATH to its original state before .ks-env modifications
+    # Usage: ks_restore_path
+    if [[ -n "$KS_ORIGINAL_PATH" ]]; then
+        export PATH="$KS_ORIGINAL_PATH"
+        unset KS_ORIGINAL_PATH
+        echo "PATH restored to original state" >&2
+    else
+        echo "Warning: No original PATH saved to restore" >&2
+    fi
 }
 
 ks_validate_days() {
@@ -113,3 +125,9 @@ ks_validate_conversation_dir() {
 
 # Initialize directories on source
 ks_ensure_dirs
+
+# Set up automatic PATH restoration for non-interactive scripts
+if [[ $- != *i* ]] && [[ -n "$KS_ORIGINAL_PATH" ]]; then
+    # Non-interactive context (script) with KS PATH modifications - set up restoration
+    trap 'ks_restore_path' EXIT
+fi
