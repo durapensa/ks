@@ -40,14 +40,20 @@ func LoadKSEnv() (*Config, error) {
 
 	// Detect conversation context
 	localKnowledgeDir := filepath.Join(currentDir, "knowledge")
+	conversationConfig := filepath.Join(currentDir, "logex-config.yaml")
+	
+	// A conversation directory has ./knowledge/ AND logex-config.yaml
+	// This distinguishes experiment directories from the main ks directory
 	if stat, err := os.Stat(localKnowledgeDir); err == nil && stat.IsDir() {
-		// We're in a conversation directory
-		config.IsConversation = true
-		config.ConversationDir = currentDir
-		config.ContextName = filepath.Base(currentDir)
-		config.KnowledgeDir = localKnowledgeDir
-		config.EventsDir = filepath.Join(localKnowledgeDir, "events")
-		config.HotLog = filepath.Join(config.EventsDir, "hot.jsonl")
+		if _, err := os.Stat(conversationConfig); err == nil {
+			// We're in a conversation/experiment directory
+			config.IsConversation = true
+			config.ConversationDir = currentDir
+			config.ContextName = filepath.Base(currentDir)
+			config.KnowledgeDir = localKnowledgeDir
+			config.EventsDir = filepath.Join(localKnowledgeDir, "events")
+			config.HotLog = filepath.Join(config.EventsDir, "hot.jsonl")
+		}
 	}
 
 	// Load environment file
